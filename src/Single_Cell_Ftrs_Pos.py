@@ -56,7 +56,7 @@ class Single_Cell_Ftrs_Pos:
     # Remove the insertions and deletions from the primary_bases and also
     # count the number of insertions and deletions
     def Get_Ins_Del_rmvd_bases(self):
-        if ((self.primary_bases.count('+') + self.primary_bases.count('-')) == 0):
+        if self.primary_bases.count('+') + self.primary_bases.count('-') == 0:
             self.ins_count = 0
             self.del_count = 0
             self.ins_list = []
@@ -64,28 +64,29 @@ class Single_Cell_Ftrs_Pos:
             self.ins_del_rmvd_bases = self.primary_bases
         else:
             cp_primary_bases = copy.deepcopy(self.primary_bases)
-            (self.ins_list, ins_rmvd_bases) = U.find_indel(
-                cp_primary_bases, '\+[0-9]+[ACGTNacgtn]+')
+            self.ins_list, ins_rmvd_bases = \
+                U.find_indel(cp_primary_bases, '\+[0-9]+[ACGTNacgtn]+')
             self.ins_count = len(self.ins_list)
-            (self.del_list, self.ins_del_rmvd_bases) = U.find_indel(
-                ins_rmvd_bases, '-[0-9]+[ACGTNacgtn]+')
+            self.del_list, self.ins_del_rmvd_bases = \
+                U.find_indel(ins_rmvd_bases, '-[0-9]+[ACGTNacgtn]+')
             self.del_count = len(self.del_list)
-        return 0
+
 
     # Function that calculates the base calling errors from base qual scores
     def Get_Base_Qual_Vals(self):
-        (self.base_qual_val_list,
-         self.base_qual_int_val_list) = U.Get_base_qual_list(self.base_q)
-        return 0
+        self.base_qual_val_list, self.base_qual_int_val_list = \
+            U.Get_base_qual_list(self.base_q)
+
 
     # After removal of insertions and deletions we create the base call string
     # to be used by the model
     def Get_Base_Calls(self, ref):
-        (self.start_read_counts, self.end_read_counts,
-         self.start_end_ins_del_rmvd_bases) = U.Count_Start_and_End(self.ins_del_rmvd_bases)
+        self.start_read_counts, self.end_read_counts, 
+                self.start_end_ins_del_rmvd_bases = \
+            U.Count_Start_and_End(self.ins_del_rmvd_bases)
         self.final_bases = U.Create_base_call_string(
             self.start_end_ins_del_rmvd_bases, ref)
-        return 0
+
 
     def Get_base_call_string_nd_quals(self, ref):
         self.Get_Ins_Del_rmvd_bases()
@@ -96,14 +97,14 @@ class Single_Cell_Ftrs_Pos:
     # Function that calculates the numbers of alternate alleles in the
     # ins_del_rmvd_bases
     def get_Alt_Allele_Count(self):
-        A_cnt = self.start_end_ins_del_rmvd_bases.count(
-            'A') + self.start_end_ins_del_rmvd_bases.count('a')
-        T_cnt = self.start_end_ins_del_rmvd_bases.count(
-            'T') + self.start_end_ins_del_rmvd_bases.count('t')
-        G_cnt = self.start_end_ins_del_rmvd_bases.count(
-            'G') + self.start_end_ins_del_rmvd_bases.count('g')
-        C_cnt = self.start_end_ins_del_rmvd_bases.count(
-            'C') + self.start_end_ins_del_rmvd_bases.count('c')
+        A_cnt = self.start_end_ins_del_rmvd_bases.count('A') \
+            + self.start_end_ins_del_rmvd_bases.count('a')
+        T_cnt = self.start_end_ins_del_rmvd_bases.count('T') \
+            + self.start_end_ins_del_rmvd_bases.count('t')
+        G_cnt = self.start_end_ins_del_rmvd_bases.count('G') \
+            + self.start_end_ins_del_rmvd_bases.count('g')
+        C_cnt = self.start_end_ins_del_rmvd_bases.count('C') \
+            + self.start_end_ins_del_rmvd_bases.count('c')
         return np.array([A_cnt, T_cnt, G_cnt, C_cnt], dtype=int)
 
 
@@ -127,7 +128,7 @@ class Single_Cell_Ftrs_Pos:
 
 
     # Calculate probability of data given genotype gt
-    def Calc_Prob_gt(self, gt, max_depth, start=0):
+    def calc_prob_gt(self, gt, max_depth, start=0):
         ub = min(len(self.base_qual_val_list),
                  len(self.final_bases), max_depth)
         val = np.ones(ub - start)
@@ -148,7 +149,7 @@ class Single_Cell_Ftrs_Pos:
     def Prob_Reads_Given_Genotype_hetero(self, g, ub, pad):
         prob_0_50d = self.cell_prob_0_50d
         prob_2_50d = self.cell_prob_2_50d
-        prob_1_50d = self.Calc_Prob_gt(g, min(ub, 100))
+        prob_1_50d = self.calc_prob_gt(g, min(ub, 100))
 
         prob_50d = (1 - pad) * prob_1_50d \
             + pad / 2 * (prob_0_50d + prob_2_50d)
@@ -159,7 +160,7 @@ class Single_Cell_Ftrs_Pos:
             prob_0 = self.cell_prob_0
             prob_2 = self.cell_prob_2
             # p(d|g=1, ADO = False)
-            prob_1 = self.cell_prob_1_50d * self.Calc_Prob_gt(g, ub, 100)
+            prob_1 = self.cell_prob_1_50d * self.calc_prob_gt(g, ub, 100)
             # Eq. 3: (1 - p_ad) * p(d|g=1, ADO=False) + p_ad * p(d|g=1, ADO=True)
             prob = (1 - pad) * prob_1 + pad / 2 * (prob_0 + prob_2)
             return prob
@@ -185,20 +186,20 @@ class Single_Cell_Ftrs_Pos:
         ub = min(len(self.base_qual_val_list), len(self.final_bases), max_depth)
 
         if (genotype_flag == 0):
-            self.cell_prob_0_50d = self.Calc_Prob_gt(g, min(100, ub))
+            self.cell_prob_0_50d = self.calc_prob_gt(g, min(100, ub))
             if ub <= 100:
                 self.cell_prob_0 = self.cell_prob_0_50d
             else:
                 self.cell_prob_0 = self.cell_prob_0_50d \
-                    * self.Calc_Prob_gt(g, ub, 100)
+                    * self.calc_prob_gt(g, ub, 100)
             prob = self.cell_prob_0
         elif (genotype_flag == 2):
-            self.cell_prob_2_50d = self.Calc_Prob_gt(g, min(100, ub))
+            self.cell_prob_2_50d = self.calc_prob_gt(g, min(100, ub))
             if ub <= 100:
                 self.cell_prob_2 = self.cell_prob_2_50d
             else:
                 self.cell_prob_2 = self.cell_prob_2_50d \
-                    * self.Calc_Prob_gt(g, ub, 100)
+                    * self.calc_prob_gt(g, ub, 100)
             prob = self.cell_prob_2
         elif (genotype_flag == 1):
             self.cell_prob_1 = self.Prob_Reads_Given_Genotype_hetero(g, ub, pad)
@@ -207,16 +208,17 @@ class Single_Cell_Ftrs_Pos:
         return prob
 
 
-    def Prob_Reads_Given_Genotype_50d(self, genotype_flag):
-        if (genotype_flag == 0):
+    def Prob_Reads_Given_Genotype_50d(self, gt_flag):
+        if gt_flag == 0:
             self.cell_prob_0 = self.cell_prob_0_50d
             return self.cell_prob_0_50d
-        elif (genotype_flag == 2):
-            self.cell_prob_2 = self.cell_prob_2_50d
-            return self.cell_prob_2_50d
-        elif (genotype_flag == 1):
+        elif gt_flag == 1:
             self.cell_prob_1 = self.cell_prob_1_50d
             return self.cell_prob_1_50d
+        else:
+            self.cell_prob_2 = self.cell_prob_2_50d
+            return self.cell_prob_2_50d
+        
 
 
     def Prob_Reads_Given_Genotype_prob(self, gt_flag):
