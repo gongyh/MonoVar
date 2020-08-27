@@ -31,8 +31,10 @@ from alleles_prior import allele_prior
 from utils import Utils_Functions
 import math
 import copy
+import numpy as np
 
 U = Utils_Functions()
+G_MAP ={'CA': 'AC', 'GA': 'AG', 'TA': 'AT', 'GC': 'CG', 'TC': 'CT', 'TG': 'GT'}
 
 
 class Single_Cell_Ftrs_Pos:
@@ -94,222 +96,82 @@ class Single_Cell_Ftrs_Pos:
 
     # Function that calculates the numbers of alternate alleles in the
     # ins_del_rmvd_bases
-    def Get_Alt_Allele_Count(self):
-        self.A_cnt = self.start_end_ins_del_rmvd_bases.count(
+    def get_Alt_Allele_Count(self):
+        A_cnt = self.start_end_ins_del_rmvd_bases.count(
             'A') + self.start_end_ins_del_rmvd_bases.count('a')
-        self.C_cnt = self.start_end_ins_del_rmvd_bases.count(
-            'C') + self.start_end_ins_del_rmvd_bases.count('c')
-        self.G_cnt = self.start_end_ins_del_rmvd_bases.count(
-            'G') + self.start_end_ins_del_rmvd_bases.count('g')
-        self.T_cnt = self.start_end_ins_del_rmvd_bases.count(
+        T_cnt = self.start_end_ins_del_rmvd_bases.count(
             'T') + self.start_end_ins_del_rmvd_bases.count('t')
-        return 0
+        G_cnt = self.start_end_ins_del_rmvd_bases.count(
+            'G') + self.start_end_ins_del_rmvd_bases.count('g')
+        C_cnt = self.start_end_ins_del_rmvd_bases.count(
+            'C') + self.start_end_ins_del_rmvd_bases.count('c')
+        return np.array([A_cnt, T_cnt, G_cnt, C_cnt], dtype=int)
 
-    # Saves the cell index
-    def Set_Cell_Index(self, index):
-        self.cell_index = index
-        return 0
 
     # Store altBase, Alt_freq, prior_allele_mat
     def Store_Addl_Info(self, refBase, altBase, Alt_freq, prior_allele_mat):
         self.altBase = altBase
         self.Alt_freq = Alt_freq
+        self.forward_alt_count = self.start_end_ins_del_rmvd_bases\
+            .count(self.altBase)
+        self.reverse_alt_count = self.start_end_ins_del_rmvd_bases\
+            .count(self.altBase.lower())
+        self.alt_count = self.forward_alt_count + self.reverse_alt_count
+
         self.prior_allele_mat = prior_allele_mat
         self.refBase = refBase
-        # self.altBase          = U.refineBase(self.altBase)
         return 0
 
-    def Store_Strand_Bias_info(self):
-        # self.forward_ref_count = self.start_end_ins_del_rmvd_bases.count('.')
-        # self.reverse_ref_count = self.start_end_ins_del_rmvd_bases.count(',')
-        self.lowercase_alt_base = self.altBase.lower()
-        self.forward_alt_count = self.start_end_ins_del_rmvd_bases.count(
-            self.altBase)
-        self.reverse_alt_count = self.start_end_ins_del_rmvd_bases.count(
-            self.lowercase_alt_base)
-        self.altcount = self.forward_alt_count + self.reverse_alt_count
-        return (self.forward_ref_count, self.forward_alt_count, self.reverse_ref_count, self.reverse_alt_count)
 
-    # Refing g
-    def refineG(self, g):
-        if g == 'CA':
-            g = 'AC'
-        elif g == 'GA':
-            g = 'AG'
-        elif g == 'TA':
-            g = 'AT'
-        elif g == 'GC':
-            g = 'CG'
-        elif g == 'TC':
-            g = 'CT'
-        elif g == 'TG':
-            g = 'GT'
-        return g
+    def get_strand_bias_info(self):
+        return (self.forward_ref_count, self.forward_alt_count,
+            self.reverse_ref_count, self.reverse_alt_count)
+
 
     # Calculate probability of data given genotype gt
-    def Calc_Prob_gt(self, gt, max_depth):
-        val = 1.0
+    def Calc_Prob_gt(self, gt, max_depth, start=0):
         ub = min(len(self.base_qual_val_list),
                  len(self.final_bases), max_depth)
-        for i in range(ub):
+        val = np.ones(ub - start)
+        for i in range(start, ub, 1):
             curr_base = self.final_bases[i]
-            # curr_base     = U.refineBase(curr_base)
             curr_base_key = (gt, curr_base)
             curr_err = self.base_qual_val_list[i]
+            # if curr_err > 0.1: 
+            #     continue
             prob_i = self.prior_allele_mat.getValue(curr_base_key)
+            # Eq. 1, Eq. 2, Eq. 4
             prob = curr_err * (1 - prob_i) / 3 + (1 - curr_err) * prob_i
-            val = val * prob
-        return val
+            val[i - start] = prob
+        return np.prod(val)
 
-    # Function to calculate likelihood of homo ref genotype for ub = 50
-    def Prob_Reads_Given_Genotype_homo_ref_50d(self, g, ub):
-        key_curr_base = (g, self.refBase)
-        curr_base_genotype_prob = self.prior_allele_mat.getValue(key_curr_base)
-        complement_curr_base_genotype_prob = 1 - curr_base_genotype_prob
-        probability = 1.0
-        for i in range(ub):
-            curr_base = self.final_bases[i]
-            curr_err = self.base_qual_val_list[i]
-            if (curr_base == self.refBase):
-                prob_i = curr_err * complement_curr_base_genotype_prob / \
-                    3 + (1 - curr_err) * curr_base_genotype_prob
-            else:
-                prob_i = curr_err * curr_base_genotype_prob + \
-                    (1 - curr_err) * complement_curr_base_genotype_prob / 3
-            probability = probability * prob_i
-        self.cell_prob_0 = probability
-        self.cell_prob_0_50d = probability
-        return self.cell_prob_0
-
-    # Function to calculate likelihood of homo ref genotype for ub = all
-    def Prob_Reads_Given_Genotype_homo_ref_all(self, g, ub):
-        key_curr_base = (g, self.refBase)
-        curr_base_genotype_prob = self.prior_allele_mat.getValue(key_curr_base)
-        complement_curr_base_genotype_prob = 1 - curr_base_genotype_prob
-        probability = 1.0
-        for i in range(100):
-            curr_base = self.final_bases[i]
-            curr_err = self.base_qual_val_list[i]
-            if (curr_base == self.refBase):
-                prob_i = curr_err * complement_curr_base_genotype_prob / \
-                    3 + (1 - curr_err) * curr_base_genotype_prob
-            else:
-                prob_i = curr_err * curr_base_genotype_prob + \
-                    (1 - curr_err) * complement_curr_base_genotype_prob / 3
-            probability = probability * prob_i
-        self.cell_prob_0_50d = probability
-        for i in range(100, ub):
-            curr_base = self.final_bases[i]
-            curr_err = self.base_qual_val_list[i]
-            if (curr_base == self.refBase):
-                prob_i = curr_err * complement_curr_base_genotype_prob / \
-                    3 + (1 - curr_err) * curr_base_genotype_prob
-            else:
-                prob_i = curr_err * curr_base_genotype_prob + \
-                    (1 - curr_err) * complement_curr_base_genotype_prob / 3
-            probability = probability * prob_i
-        self.cell_prob_0 = probability
-
-        return self.cell_prob_0
-
-    # Function to calculate likelihood of homo nonref genotype for ub = 50
-    def Prob_Reads_Given_Genotype_homo_nonref_50d(self, g, ub):
-        key_curr_base = (g, self.altBase)
-        curr_base_genotype_prob = self.prior_allele_mat.getValue(key_curr_base)
-        complement_curr_base_genotype_prob = 1 - curr_base_genotype_prob
-        probability = 1.0
-        for i in range(ub):
-            curr_base = self.final_bases[i]
-            curr_err = self.base_qual_val_list[i]
-            if (curr_base == self.altBase):
-                prob_i = curr_err * complement_curr_base_genotype_prob / \
-                    3 + (1 - curr_err) * curr_base_genotype_prob
-            else:
-                prob_i = curr_err * curr_base_genotype_prob + \
-                    (1 - curr_err) * complement_curr_base_genotype_prob / 3
-            probability = probability * prob_i
-        self.cell_prob_2 = probability
-        self.cell_prob_2_50d = probability
-        return self.cell_prob_2
-
-    # Function to calculate likelihood of homo nonref genotype for ub = all
-    def Prob_Reads_Given_Genotype_homo_nonref_all(self, g, ub):
-        key_curr_base = (g, self.altBase)
-        curr_base_genotype_prob = self.prior_allele_mat.getValue(key_curr_base)
-        complement_curr_base_genotype_prob = 1 - curr_base_genotype_prob
-        probability = 1.0
-        for i in range(100):
-            curr_base = self.final_bases[i]
-            curr_err = self.base_qual_val_list[i]
-            if (curr_base == self.altBase):
-                prob_i = curr_err * complement_curr_base_genotype_prob / \
-                    3 + (1 - curr_err) * curr_base_genotype_prob
-            else:
-                prob_i = curr_err * curr_base_genotype_prob + \
-                    (1 - curr_err) * complement_curr_base_genotype_prob / 3
-            probability = probability * prob_i
-        self.cell_prob_2_50d = probability
-        for i in range(100, ub):
-            curr_base = self.final_bases[i]
-            curr_err = self.base_qual_val_list[i]
-            if (curr_base == self.altBase):
-                prob_i = curr_err * complement_curr_base_genotype_prob / \
-                    3 + (1 - curr_err) * curr_base_genotype_prob
-            else:
-                prob_i = curr_err * curr_base_genotype_prob + \
-                    (1 - curr_err) * complement_curr_base_genotype_prob / 3
-            probability = probability * prob_i
-        self.cell_prob_2 = probability
-
-        return self.cell_prob_2
-
-    # Helper function to calculate beyond 50 bases
-    def Calc_Prob_gt_beyond_50(self, g, ub, prob_1_50d):
-        val = prob_1_50d
-        for i in range(100, ub):
-            curr_base = self.final_bases[i]
-            curr_base_key = (g, curr_base)
-            curr_err = self.base_qual_val_list[i]
-            prob_i = self.prior_allele_mat.getValue(curr_base_key)
-            prob = curr_err * (1 - prob_i) / 3 + (1 - curr_err) * prob_i
-            val = val * prob
-        return val
-
-    # Function to calculate likelihood of hetero genotype for ub = 50
-    def Prob_Reads_Given_Genotype_hetero_50d(self, g, ub, pad):
-        prob_0 = self.cell_prob_0_50d
-        prob_2 = self.cell_prob_2_50d
-        prob_1 = self.Calc_Prob_gt(g, ub)
-        pad_c = pad / 2
-        probability = (1 - pad) * prob_1 + pad_c * prob_0 + pad_c * prob_2
-        self.cell_prob_1 = probability
-        self.cell_prob_1_50d = probability
-        return self.cell_prob_1
 
     # Function to calculate likelihood of hetero genotype for ub = all
-    def Prob_Reads_Given_Genotype_hetero_all(self, g, ub, pad):
+    def Prob_Reads_Given_Genotype_hetero(self, g, ub, pad):
         prob_0_50d = self.cell_prob_0_50d
         prob_2_50d = self.cell_prob_2_50d
-        prob_1_50d = self.Calc_Prob_gt(g, 100)
-        # prob_1_50d = self.Calc_Prob_gt(g, 50)
-        pad_c = pad / 2
-        probability = (1 - pad) * prob_1_50d + pad_c * \
-            prob_0_50d + pad_c * prob_2_50d
-        self.cell_prob_1_50d = probability
-        prob_0 = self.cell_prob_0
-        prob_2 = self.cell_prob_2
-        prob_1 = self.Calc_Prob_gt_beyond_50(g, ub, prob_1_50d)
-        all_prob = (1 - pad) * prob_1 + pad_c * prob_0 + pad_c * prob_2
-        self.cell_prob_1 = all_prob
-        return self.cell_prob_1
+        prob_1_50d = self.Calc_Prob_gt(g, min(ub, 100))
+
+        prob_50d = (1 - pad) * prob_1_50d \
+            + pad / 2 * (prob_0_50d + prob_2_50d)
+        self.cell_prob_1_50d = prob_50d
+        if ub <= 100:
+            return prob_50d
+        else:
+            prob_0 = self.cell_prob_0
+            prob_2 = self.cell_prob_2
+            # p(d|g=1, ADO = False)
+            prob_1 = self.cell_prob_1_50d * self.Calc_Prob_gt(g, ub, 100)
+            # Eq. 3: (1 - p_ad) * p(d|g=1, ADO=False) + p_ad * p(d|g=1, ADO=True)
+            prob = (1 - pad) * prob_1 + pad / 2 * (prob_0 + prob_2)
+            return prob
+
 
     def Prob_Reads_Given_Genotype(self, genotype_flag, max_depth, pad):
-        # print "called cell and gt", self.cell_index, genotype_flag
         if (self.altBase == ''):
             if (genotype_flag != 0):
                 self.cell_prob_2 = 0
                 self.cell_prob_1 = 0
-
                 return 0.0
             else:
                 g = self.refBase + self.refBase
@@ -320,44 +182,32 @@ class Single_Cell_Ftrs_Pos:
                 g = self.altBase + self.altBase
             else:
                 g = self.refBase + self.altBase
-                g = self.refineG(g)
-        # print g
-        # print "called cell and gt", self.cell_index, genotype_flag,
-        # self.final_bases, g
-        ub = min(len(self.base_qual_val_list),
-                 len(self.final_bases), max_depth)
-        if (ub <= 100):
-            if (genotype_flag == 0):
-                probability = self.Prob_Reads_Given_Genotype_homo_ref_50d(
-                    g, ub)
-                # print ub, genotype_flag, self.cell_prob_0
-                return probability
-            elif (genotype_flag == 2):
-                probability = self.Prob_Reads_Given_Genotype_homo_nonref_50d(
-                    g, ub)
-                # print ub, genotype_flag, self.cell_prob_2
-                return probability
-            elif (genotype_flag == 1):
-                probability = self.Prob_Reads_Given_Genotype_hetero_50d(
-                    g, ub, pad)
-                # print ub, genotype_flag, self.cell_prob_1
-                return probability
-        else:
-            if (genotype_flag == 0):
-                probability = self.Prob_Reads_Given_Genotype_homo_ref_all(
-                    g, ub)
-                # print ub, genotype_flag, probability
-                return probability
-            elif (genotype_flag == 2):
-                probability = self.Prob_Reads_Given_Genotype_homo_nonref_all(
-                    g, ub)
-                # print ub, genotype_flag, probability
-                return probability
-            elif (genotype_flag == 1):
-                probability = self.Prob_Reads_Given_Genotype_hetero_all(
-                    g, ub, pad)
-                # print ub, genotype_flag, probability
-                return probability
+                g = G_MAP.get(g, g)
+
+        ub = min(len(self.base_qual_val_list), len(self.final_bases), max_depth)
+
+        if (genotype_flag == 0):
+            self.cell_prob_0_50d = self.Calc_Prob_gt(g, min(100, ub))
+            if ub <= 100:
+                self.cell_prob_0 = self.cell_prob_0_50d
+            else:
+                self.cell_prob_0 = self.cell_prob_0_50d \
+                    * self.Calc_Prob_gt(g, ub, 100)
+            prob = self.cell_prob_0
+        elif (genotype_flag == 2):
+            self.cell_prob_2_50d = self.Calc_Prob_gt(g, min(100, ub))
+            if ub <= 100:
+                self.cell_prob_2 = self.cell_prob_2_50d
+            else:
+                self.cell_prob_2 = self.cell_prob_2_50d \
+                    * self.Calc_Prob_gt(g, ub, 100)
+            prob = self.cell_prob_2
+        elif (genotype_flag == 1):
+            self.cell_prob_1 = self.Prob_Reads_Given_Genotype_hetero(g, ub, pad)
+            prob = self.cell_prob_1
+
+        return prob
+
 
     def Prob_Reads_Given_Genotype_50d(self, genotype_flag):
         if (genotype_flag == 0):
@@ -370,7 +220,8 @@ class Single_Cell_Ftrs_Pos:
             self.cell_prob_1 = self.cell_prob_1_50d
             return self.cell_prob_1_50d
 
-    def Prob_Reads_Given_Genotype_Genotyping(self, gt_flag):
+
+    def Prob_Reads_Given_Genotype_prob(self, gt_flag):
         if gt_flag == 0:
             return self.cell_prob_0
         elif gt_flag == 1:

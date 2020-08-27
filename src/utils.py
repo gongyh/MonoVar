@@ -27,17 +27,11 @@ SOFTWARE.
 
 """
 
-import math
-import heapq
 import copy
 import re
-import sys
 import numpy as np
 import pysam
-from operator import add
 from scipy import stats
-import fileinput
-from contextlib import closing
 from base_q_ascii import Ascii_Table
 from alleles_prior import allele_prior
 
@@ -46,69 +40,15 @@ base_q_tbl = Ascii_Table()
 
 class Utils_Functions:
 
-    def nCr(self, n, r):
-        f = math.factorial
-        return f(n) / f(r) / f(n - r)
-
-    def find_second_smallest(self, l):
-        return heapq.nsmallest(2, l)[-1]
-
-    def GetPosition(self, row):
-        """Get the position in the chromosome from the line of the file
-        """
-        position = int(row[1])
-        return position
-
-    def GetRefBase(self, row):
-        """ Get the reference base at that position from the line of the file
-        """
-        refbase = row[2]
-        return refbase
-
-    def single_cell_ftrs(self, row, cell_index):
-        """ Extract the features of the cell indexed with cell_index
-        """
-        newrow = row[cell_index + 2]
-        newrow = newrow.split('\t')
-        cell_ftr = [int(i) for i in newrow[0:6]]
-        read_bases = newrow[6]
-        read_bases = read_bases.replace(' ', '')
-        newrow[7] = newrow[7].replace(' ', '')
-        if newrow[7] == '[]':
-            base_qual_list_f = []
-        else:
-            base_qual_list = newrow[7].split(',')
-    #       print base_qual_list
-            base_qual_list[0] = base_qual_list[0].replace('[', '')
-            base_qual_list[-1] = base_qual_list[-1].replace(']', '')
-    #       print base_qual_list
-            base_qual_list_f = [float(i) for i in base_qual_list]
-        return [cell_ftr, read_bases, base_qual_list_f]
-
-    def read_last_line(self, s):
-        with open(s, "rb") as f:
-            f.seek(-2, 2)
-            while (f.read(1) != '\n'):
-                f.seek(-2, 1)
-            last = f.readline()
-        last = last.replace('\n', '')
-        pos = int(last.split('\t')[1])
-        return pos
-
     def checkReadPresence(self, single_cell_dict):
         if single_cell_dict.depth == 0:
             return 0
-        else:
-            return 1
+        return 1
 
-    def Create_Factorial_List(self, max_allele_cnt):
-        factorial_list = max_allele_cnt * [None]
-        f = math.factorial
-        for i in range(max_allele_cnt):
-            factorial_list[i] = f(i)
-        return factorial_list
 
-    def Create_nCr_mat(self, max_allele_cnt, factorial_list):
+    def Create_nCr_mat(self, max_allele_cnt):
+        factorial_list = [np.math.factorial(i) for i in range(max_allele_cnt)]
+           
         ncr_mat = np.zeros((max_allele_cnt, max_allele_cnt))
         for i in range(max_allele_cnt):
             for j in range(max_allele_cnt):
@@ -116,14 +56,14 @@ class Utils_Functions:
                     (factorial_list[i] * factorial_list[j - i])
         return ncr_mat
 
+
     def CheckAltAllele(self, single_cell_dict):
         """ Check whether the given single cell has alternate allele or not
         """
-        alt_c = single_cell_dict.depth - single_cell_dict.refDepth
-        if alt_c == 0:
+        if single_cell_dict.depth - single_cell_dict.refDepth == 0:
             return 0
-        else:
-            return 1
+        return 1
+
 
     def RefCountString(self, read_base):
         forward_ref_c = read_base.count('.')
@@ -131,28 +71,17 @@ class Utils_Functions:
         RefCount = forward_ref_c + reverse_ref_c
         return (forward_ref_c, reverse_ref_c, RefCount)
 
+
     def refineBase(self, b):
-        b = b.replace(' ', '')
-        nb = b.upper()
-        return nb
+        return b.replace(' ', '').upper()
+
 
     def copy_list_but_one(self, i_list, index):
-        nu_list = []
-        len_i_list = len(i_list)
-        # print len_i_list
-        len_nu_list = len_i_list - 1
-        for i in range(index):
+        nu_list = [i_list[i] for i in range(index)]
+        for i in range(index + 1, len(i_list)):
             nu_list.append(i_list[i])
-        for i in range(index + 1, len_i_list):
-            nu_list.append(i_list[i])
-        return (nu_list, len_nu_list)
+        return nu_list
 
-    def update_alt_count(self, alt_allele_count, cell_ftr_dict):
-        alt_allele_count[0] += cell_ftr_dict.A_cnt
-        alt_allele_count[1] += cell_ftr_dict.T_cnt
-        alt_allele_count[2] += cell_ftr_dict.G_cnt
-        alt_allele_count[3] += cell_ftr_dict.C_cnt
-        return alt_allele_count
 
     def find_indel(self, string, pattern):
         """ Finds all the occurrences of pattern in string. Removes all 
@@ -290,45 +219,27 @@ class Utils_Functions:
         return stat_dict
 
     def calc_strand_bias(self, cell_ftr_pos_list, Alt_count):
-        forward_ref_count = 0
-        forward_alt_count = 0
-        reverse_ref_count = 0
-        reverse_alt_count = 0
-        for i in range(len(cell_ftr_pos_list)):
-            (fr, fa, rr, ra) = cell_ftr_pos_list[i].Store_Strand_Bias_info()
-            forward_ref_count += fr
-            forward_alt_count += fa
-            reverse_ref_count += rr
-            reverse_alt_count += ra
-        if ((forward_ref_count == 0) & (reverse_ref_count == 0)):
-            return (0.0, 1)
-        else:
-            cont_table = np.array([[forward_ref_count, reverse_ref_count], [
-                                  forward_alt_count, reverse_alt_count]])
-            (oddsRatio, pval) = stats.fisher_exact(cont_table)
-            # if math.isnan(oddsRatio):
-            #     for i in range(len(cell_ftr_pos_list)):
-            #         print cell_ftr_pos_list[i].start_end_ins_del_rmvd_bases, cell_ftr_pos_list[i].forward_alt_count, cell_ftr_pos_list[i].reverse_alt_count
-            #     print cont_table, cell_ftr_pos_list[0].altBase, Alt_count
-            return (oddsRatio, pval)
+        f_ref_count = 0
+        f_alt_count = 0
+        r_ref_count = 0
+        r_alt_count = 0
+        for cell_ftr_pos in cell_ftr_pos_list:
+            fr, fa, rr, ra = cell_ftr_pos.get_strand_bias_info()
+            f_ref_count += fr
+            f_alt_count += fa
+            r_ref_count += rr
+            r_alt_count += ra
 
-        # if (min(forward_ref_count, reverse_ref_count) == 0):
-  #           		refRatio = max(forward_ref_count, reverse_ref_count)
-  #           	else:
-  #       		refRatio = float(max(forward_ref_count, reverse_ref_count))/min(forward_ref_count, reverse_ref_count)
-  #           	if (min(forward_alt_count, reverse_alt_count) == 0):
-  #               	altRatio = max(forward_alt_count, reverse_alt_count)
-  #           	else:
-  #       		altRatio = float(max(forward_alt_count, reverse_alt_count))/min(forward_alt_count, reverse_alt_count)
-  #           	if (reverse_ref_count*forward_alt_count == 0):
-  #               	R = forward_ref_count*reverse_alt_count
-  #           	else:
-  #       		R = float(forward_ref_count*reverse_alt_count)/(reverse_ref_count*forward_alt_count)
-        # if R == 0:
-        # 	oddsRatio = forward_alt_count + forward_ref_count + reverse_ref_count + reverse_alt_count
-        # else:
-  #       		oddsRatio = R + 1.0/R
-  #       	return (refRatio, altRatio, oddsRatio)
+        if f_ref_count == 0 and r_ref_count == 0:
+            oddsRatio = 0.0
+        else:
+            cont_table = np.array(
+                [[f_ref_count, r_ref_count], [f_alt_count, r_alt_count]]
+            )
+            oddsRatio, pval = stats.fisher_exact(cont_table)
+
+        return oddsRatio
+
 
     def calc_prior(self, theta, n_cells, flag):
         prior_variant_number = []
@@ -364,31 +275,37 @@ class Utils_Functions:
                 prior_variant_number.append(prob)
         return prior_variant_number
 
-    def find_max_prob_ratio(self, matrix, dim):
-        l_0_prob = matrix.denom_prob_matrix[0, dim[1] - 1]
-        if l_0_prob == 0:
-            subtracting_max_prob_val = -743.7469
-        else:
-            subtracting_max_prob_val = math.log(l_0_prob)
-        (first_term_max_prob_val, max_prob_allele_count) = max((v, i)
-                                                               for i, v in enumerate(matrix.denom_prob_matrix[:, dim[1] - 1]))
-        if (first_term_max_prob_val <= 0):
-            log_first_term_max_prob_val = -743.7469
-        else:
-            log_first_term_max_prob_val = math.log(first_term_max_prob_val)
-        max_prob_ratio = log_first_term_max_prob_val - subtracting_max_prob_val
-        return (max_prob_ratio, max_prob_allele_count)
 
-    def Get_prior_allele_mat(self, read_smpl_count, alt_smpl_count, cell_no_threshold, total_depth, Alt_freq, pe):
+    def find_max_prob_ratio(self, matrix):
+        l_0_prob = matrix.denom_prob_matrix[0, -1]
+        if l_0_prob == 0:
+            subtracting_max_prob = -743.7469
+        else:
+            subtracting_max_prob = np.log(l_0_prob)
+
+        allele_count = matrix.denom_prob_matrix[:, -1].argmax()
+        max_prob = matrix.denom_prob_matrix[allele_count, -1]
+           
+        if max_prob <= 0:
+            log_max_prob = -743.7469
+        else:
+            log_max_prob = np.log(max_prob)
+        max_prob_ratio = log_max_prob - subtracting_max_prob
+        return max_prob_ratio
+
+
+    def Get_prior_allele_mat(self, read_smpl_count, alt_smpl_count,
+                cell_no_threshold, total_depth, Alt_freq, pe):
         if ((read_smpl_count > cell_no_threshold - 1) & (alt_smpl_count == 1)):
             prior_allele_mat = allele_prior(0.2)
-        elif ((read_smpl_count > cell_no_threshold) & (alt_smpl_count == 2) & (total_depth > 30) & (Alt_freq < 0.1)):
+        elif ((read_smpl_count > cell_no_threshold) & (alt_smpl_count == 2) \
+                & (total_depth > 30) & (Alt_freq < 0.1)):
             prior_allele_mat = allele_prior(0.1)
         else:
             prior_allele_mat = allele_prior(pe)
         return prior_allele_mat
 
-    def Calc_chr_count(self, barcode):
+    def calc_chr_count(self, barcode):
         AC = 0
         AN = 0
         for c in barcode[1:-1]:
@@ -400,33 +317,32 @@ class Utils_Functions:
         AF = float(AC) / AN
         return (AC, AF, AN)
 
-    def Calc_Base_Q_Rank_Sum(self, read_supported_cell_list, refBase, altBase):
-        ref_read_list = []
-        alt_read_list = []
+    def calc_base_q_rank_sum(self, read_supported_cell_list):
+        ref_list = []
+        alt_list = []
         for cell_ftr_info in read_supported_cell_list:
-            for i in range(len(cell_ftr_info.final_bases)):
-                if cell_ftr_info.final_bases[i] == refBase:
-                    ref_read_list.append(
-                        cell_ftr_info.base_qual_int_val_list[i])
-                elif cell_ftr_info.final_bases[i] == altBase:
-                    alt_read_list.append(
-                        cell_ftr_info.base_qual_int_val_list[i])
-        return stats.ranksums(alt_read_list, ref_read_list)
+            for i, base in enumerate(cell_ftr_info.final_bases):
+                if base == cell_ftr_info.refBase:
+                    ref_list.append(cell_ftr_info.base_qual_int_val_list[i])
+                elif base == cell_ftr_info.altBase:
+                    alt_list.append(cell_ftr_info.base_qual_int_val_list[i])
+        
+        baseQranksum, pVal = stats.ranksums(alt_list, ref_list)
+        return baseQranksum
 
-    def Calc_qual_depth(self, barcode, All_single_cell_ftrs_list, Qual):
+
+    def calc_qual_depth(self, barcode, all_single_cell_ftrs_list, qual):
         depth = 0
-        for i in range(len(barcode[1:-1])):
-            if barcode[i + 1] == 'X':
+        for i, c in enumerate(barcode[1:-1]):
+            if c == 'X' or c == '0':
                 continue
-            elif barcode[i + 1] == '0':
-                continue
-            else:
-                depth += All_single_cell_ftrs_list[i].depth
+            depth += all_single_cell_ftrs_list[i].depth
         if depth > 0:
-            qual_depth = float(Qual) / depth
+            qual_depth = float(qual) / depth
         else:
-            qual_depth = Qual
+            qual_depth = qual
         return qual_depth
+
 
     def Get_BAM_RG(self, bam_file):
         rows = pysam.view("-H", bam_file)
@@ -444,27 +360,23 @@ class Utils_Functions:
             bam_id = bam_id.replace('~', '')
             return bam_id
 
-    def Calc_Per_Smpl_Alt_Ref_Ratio(self, total_ref_depth, Alt_count, read_smpl_count, alt_smpl_count):
+
+    def calc_Per_Smpl_Alt_Ref_Ratio(self, total_ref_depth, alt_count,
+                read_smpl_count, alt_smpl_count):
         if total_ref_depth == 0:
             denom = 1
         else:
             denom = float(total_ref_depth) / read_smpl_count
-        num = float(Alt_count) / alt_smpl_count
-        return num / denom
+        return (float(alt_count) / alt_smpl_count) / denom
 
-    def Consensus_Filter(self, barcode):
-        nu_barcode = barcode[1:-1]
+
+    def consensus_filter(self, barcode):
         g_count = 0
-        for i in nu_barcode:
-            if i == '0':
-                g_count += 0
-            elif i == 'X':
-                g_count += 0
-            elif i == '1':
+        for c in barcode[1:-1]:
+            if c == '1' or c == '2':
                 g_count += 1
-            elif i == '2':
-                g_count += 1
+
         if g_count > 1:
-            return 1
+            return True
         else:
-            return 0
+            return False
