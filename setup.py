@@ -1,5 +1,6 @@
 import os
 import sys
+import shutil
 import subprocess
 try:
     from setuptools import setup, Extension
@@ -30,26 +31,22 @@ class MonoVarBuild(build):
 
 		self.execute(compile, [], 'Compile samtools')
 
-class MonoVarInstall(install):
 
+class MonoVarInstall(install):
 	def run(self):
 		install.run(self)
-		import shutil
-		shutil.copy2('external/samtools/samtools',
-                     os.path.join(self.install_lib, 'monovar_src'))
+		shutil.copy2('external/samtools/samtools', \
+            os.path.join(self.install_lib, 'monovar_src'))
 
-cmdclass = {'build': MonoVarBuild, 'install': MonoVarInstall,}
 
 def main():
-	if float(sys.version[:3])<2.6 or float(sys.version[:3])>=2.8:
-        	sys.stderr.write("CRITICAL: Python version must be 2.6 or 2.7!\n")
-        	sys.exit(1)
+    py_v = float(sys.version[:3])
+	if py_v < 2.6 or py_v >= 2.8:
+    	sys.stderr.write("CRITICAL: Python version must be 2.6 or 2.7!\n")
+    	sys.exit(1)
 
-	setup(
-	name = "MonoVar",
-	author = "Hamim Zafar",
-	cmdclass = cmdclass,
-	)
+	setup(name="MonoVar", author="Hamim Zafar",
+        cmdclass={'build': MonoVarBuild, 'install': MonoVarInstall})
 
 if __name__ == '__main__':
     main()

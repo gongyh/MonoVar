@@ -81,8 +81,7 @@ class Single_Cell_Ftrs_Pos:
     # After removal of insertions and deletions we create the base call string
     # to be used by the model
     def Get_Base_Calls(self, ref):
-        self.start_read_counts, self.end_read_counts, 
-                self.start_end_ins_del_rmvd_bases = \
+        self.start_read_counts, self.end_read_counts, self.start_end_ins_del_rmvd_bases = \
             U.Count_Start_and_End(self.ins_del_rmvd_bases)
         self.final_bases = U.Create_base_call_string(
             self.start_end_ins_del_rmvd_bases, ref)
