@@ -74,7 +74,7 @@ class MP_single_cell_genotype:
             norm_p_list = p_list / p_list.sum()
        
         # Determining PL
-        PL = np.round(-10 * np.log10(p_list))
+        PL = np.round(-10 * np.log10(norm_p_list))
         PL = np.where(np.isinf(PL), LOG_POOR_QUAL, PL)
         PL = PL - PL.min()
         # Determining GQ

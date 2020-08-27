@@ -350,9 +350,9 @@ class Utils_Functions:
         for r in rows:
             if r.startswith('@RG'):
                 r_l = r.split('\t')
-                id = r_l[1].split(':')
+                id_list = r_l[1].split(':')
                 flag = 1
-                return id[1]
+                return id_list[1]
         if flag == 0:
             bam_id_row = bam_file.split('/')
             bam_id = bam_id_row[-1]
