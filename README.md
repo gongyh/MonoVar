@@ -51,13 +51,17 @@ We have included three sample bam files in the folder examples. To run Monovar, 
 ```
 #!python
 
-samtools mpileup -BQ0 -d10000 -f ref.fa -q 40 -b filenames.txt | monovar.py -p 0.002 -a 0.2 -t 0.05 -m 2 -f ref.fa -b filenames.txt -o output.vcf
+samtools mpileup -B -d10000 -f ref.fa -q 40 -b filenames.txt | monovar.py -p 0.002 -a 0.2 -t 0.05 -m 2 -f ref.fa -b filenames.txt -o output.vcf
 ```
+
+> ## NOTE!## Do not use the '-Q0' argument, it will inflate the False Positive rates massively!
+
 The arguments of Monovar are as follows:
 
 ```
 #!python
 
+-i: Pileup file (optional, if no Bam file is provided)
 -b: Text file containing the full path for each Bam file. One file per line.
 -f: Reference genome file.
 -o: Output file.
@@ -66,5 +70,6 @@ The arguments of Monovar are as follows:
 -a: Offset for prior probability for allelic drop out (Default value: 0.2)
 -m: Number of threads to use in multiprocessing (Default value: 1)
 -c: Flag indicating whether to use Consensus Filter (CF) or not (Possible values: 0, 1; Default Value: 1; if 1 then CF is used, otherwise not used)  
+-d: Flag indicating debugging mode/no threading (1: enabled)
 ```
 We recommend using cutoff 40 for mapping quality when using ```samtools mpileup```. To use the probabilistic realignment for the computation of Base Alignment Quality, drop the ```-B``` while running ```samtools mpileup```.
