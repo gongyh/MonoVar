@@ -91,7 +91,6 @@ class Single_Cell_Ftrs_Pos:
         self.Get_Ins_Del_rmvd_bases()
         self.Get_Base_Qual_Vals()
         self.Get_Base_Calls(ref)
-        # print self.final_bases, self.base_qual_val_list
         return 0
 
     # Function that calculates the numbers of alternate alleles in the
@@ -109,18 +108,17 @@ class Single_Cell_Ftrs_Pos:
 
 
     # Store altBase, Alt_freq, prior_allele_mat
-    def Store_Addl_Info(self, refBase, altBase, Alt_freq, prior_allele_mat):
+    def store_addl_info(self, refBase, altBase, Alt_freq, prior_allele_mat):
         self.altBase = altBase
         self.Alt_freq = Alt_freq
-        self.forward_alt_count = self.start_end_ins_del_rmvd_bases\
+        self.forward_alt_count = self.start_end_ins_del_rmvd_bases \
             .count(self.altBase)
-        self.reverse_alt_count = self.start_end_ins_del_rmvd_bases\
+        self.reverse_alt_count = self.start_end_ins_del_rmvd_bases \
             .count(self.altBase.lower())
         self.alt_count = self.forward_alt_count + self.reverse_alt_count
 
         self.prior_allele_mat = prior_allele_mat
         self.refBase = refBase
-        return 0
 
 
     def get_strand_bias_info(self):

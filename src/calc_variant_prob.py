@@ -29,7 +29,6 @@ SOFTWARE.
 
 import numpy as np
 from nu_prob_mat import Prob_matrix
-from alleles_prior import allele_prior
 
 
 class Calc_Var_Prob():
@@ -40,7 +39,7 @@ class Calc_Var_Prob():
         self.matrix = Prob_matrix(read_supported_cell_list)
 
 
-    def Calc_Zero_Var_Prob(self, n_cells, max_depth, nCr_matrix, pad,
+    def calc_zero_var_prob(self, n_cells, max_depth, nCr_matrix, pad,
                 prior_variant_number):
         self.matrix.denom_prob_matrix = self.matrix.fill_matrix(
             self.read_supported_cell_list, n_cells, max_depth, nCr_matrix, pad)
@@ -74,4 +73,4 @@ class Calc_Var_Prob():
                     denominator = 1e-300
 
         zero_variant_prob = numerator / denominator
-        return (zero_variant_prob, denominator)
+        return zero_variant_prob, denominator

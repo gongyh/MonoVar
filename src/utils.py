@@ -361,7 +361,7 @@ class Utils_Functions:
             return bam_id
 
 
-    def calc_Per_Smpl_Alt_Ref_Ratio(self, total_ref_depth, alt_count,
+    def calc_per_smpl_alt_ref_ratio(self, total_ref_depth, alt_count,
                 read_smpl_count, alt_smpl_count):
         if total_ref_depth == 0:
             denom = 1

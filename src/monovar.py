@@ -29,33 +29,19 @@ SOFTWARE.
 """
 
 import sys
-import re
-import pysam
-import time
-import fileinput
-import copy
-import json
-import cPickle
-import math
 import copy_reg
 import types
 import multiprocessing as mp
 import numpy as np
 from functools import partial
-from operator import add
-from contextlib import closing
+
 from utils import Utils_Functions
-from alleles_prior import allele_prior
-from Single_Cell_Ftrs_Pos import Single_Cell_Ftrs_Pos
-from nu_prob_mat import Prob_matrix
-from calc_variant_prob import Calc_Var_Prob
-from nu_genotype_single_cell import Single_cell_genotype_records
 from mp_genotype import MP_single_cell_genotype
-from hzvcf import VCFRecord, VCFDocument, VRecord, VCF
+from Single_Cell_Ftrs_Pos import Single_Cell_Ftrs_Pos
+from calc_variant_prob import Calc_Var_Prob
+from hzvcf import VCFDocument, VRecord
 
 # Required for using multiprocessing
-
-
 def _pickle_method(m):
     if m.im_self is None:
         return getattr, (m.im_class, m.im_func.func_name)
@@ -71,19 +57,20 @@ M = MP_single_cell_genotype()
 pe = 0.002
 pad = 0.2
 thr = 0.05
+theta = 0.001  # Heterozygosity rate
 m_thread = 1
 CF_flag = 1
 max_depth = 10000
-
-input_args = {}
+debug = 0
 
 # Process the inputs
 argc = len(sys.argv)
 i = 1
+input_args = {}
 while (i < argc):
     if (sys.argv[i] == '-i'):
         pileup = sys.argv[i + 1]         # input pileup file
-    if (sys.argv[i] == '-n'):
+    elif (sys.argv[i] == '-n'):
         n_cells = int(sys.argv[i + 1])      # Number of input bam files
     elif (sys.argv[i] == '-p'):
         pe = float(sys.argv[i + 1])    	  # probability of error
@@ -108,39 +95,41 @@ while (i < argc):
     elif (sys.argv[i] == '-m'):
         # Number of threads to use in multiprocessing
         m_thread = int(sys.argv[i + 1])
+    elif (sys.argv[i] == '-debug'):
+        # Number of threads to use in multiprocessing
+        debug = int(sys.argv[i + 1])
     i = i + 2
 
  
 try:
     b = input_args['-f']
 except KeyError:
-    print "Error: Reference genome file not provided. Use '-f' for reference genome file.\n"
+    print('Error: Reference genome file not provided. ' \
+        'Use "-f"" for reference genome file.\n')
     exit(3)
-
 try:
     b = input_args['-b']
 except KeyError:
-    print "Error: List of Bam files not provided. Use '-b' for list of Bam files.\n"
+    print('Error: List of Bam files not provided. ' \
+        'Use "-b"" for list of Bam files.\n')
     exit(3)
-
 try:
     b = input_args['-o']
 except KeyError:
-    print "Error: Output file not provided. Use '-o' for Output file.\n"
+    print('Error: Output file not provided. Use "-o" for Output file.\n')
     exit(3)
 try:
     assert CF_flag <= 1
 except AssertionError:
-    print "CF_flag can have value 0 or 1. Use '-c' with proper value.\n"
+    print('CF_flag can have value 0 or 1. Use "-c" with proper value.\n')
     exit(3)
 
 # Obtain the RG IDs from the bam files
 bam_id_list = []
-f_bam_list = open(bam_file_list)
-for filename in f_bam_list:
-    filename = filename.replace('\n', '')
-    bam_id = U.Get_BAM_RG(filename)
-    bam_id_list.append(bam_id)
+with open(bam_file_list, 'r') as f:
+    f_bam_list = f.read().split('\n')
+    for f_bam in f_bam_list:
+        bam_id_list.append(U.Get_BAM_RG(f_bam.strip('\n')))
 
 n_cells = len(bam_id_list)
 
@@ -151,20 +140,14 @@ pool = mp.Pool(processes=m_thread)
 cell_no_threshold = n_cells / 2
 # no of possible alternate alleles {0, 1, 2, ..., 2m}
 max_allele_cnt = 2 * n_cells + 1
-theta = 0.001  # Heterozygosity rate
 Base_dict = {0: 'A', 1: 'T', 2: 'G', 3: 'C'}
 genotype_dict = {0: '0/0', 1: '0/1', 2: '1/1'}
-
-# Factorial values and nCr values
-# Table for all the required factorials
 
 # Table for all the required nCr
 nCr_matrix = U.Create_nCr_mat(max_allele_cnt)
 
 # Dictionary for holding all the priors for different values of n
-prior_variant_dict = {}
-for i in range(n_cells + 1):
-    prior_variant_dict[i] = U.calc_prior(theta, i, 1)
+prior_variant_dict = {i: U.calc_prior(theta, i, 1) for i in range(n_cells + 1)}
 
 # Open VCF file and print header
 f_vcf = open(outfile, 'w')
@@ -174,11 +157,11 @@ vcf.populate_reference(ref_file)
 vcf.print_header()
 
 # List of all single_cell_ftr_pos object
-All_single_cell_ftrs_list = n_cells * [None]
+all_single_cell_ftrs_list = n_cells * [None]
 # Global list for storing which cell contains read support
-read_flag_row = n_cells * [None]
+read_flag_row = np.zeros(n_cells)
 # Global list for storing which cell has alternate allele support
-alt_allele_flag_row = n_cells * [None]
+alt_allele_flag_row = np.zeros(n_cells)
 
 if sys.stdin.isatty():
     with open(pileup, 'r') as f:
@@ -187,10 +170,11 @@ else:
     lines = sys.stdin
 
 for line in lines:
-    line = line.replace('\n', '')
+    line = line.strip('\n')
     row = line.split('\t')
     if line == '':
         continue
+
     contig = row[0]
     pos = int(row[1])
     refBase = U.refineBase(row[2])
@@ -201,17 +185,16 @@ for line in lines:
         curr_cell_pos_ftrs = Single_Cell_Ftrs_Pos(refBase, row[3*i: 3*i + 3])
         total_depth += curr_cell_pos_ftrs.depth
         total_ref_depth += curr_cell_pos_ftrs.refDepth
-        All_single_cell_ftrs_list[i - 1] = curr_cell_pos_ftrs
+        all_single_cell_ftrs_list[i - 1] = curr_cell_pos_ftrs
+
+    if total_depth <= 10 or total_depth == total_ref_depth:
+        continue
 
     alt_count = total_depth - total_ref_depth
-    if total_depth == 0:
-        alt_freq = 0
-    else:
-        alt_freq = float(alt_count) / total_depth
+    alt_freq = float(alt_count) / total_depth
 
     # No reads supporting alternate allele, so no operations needed
-    if total_ref_depth == total_depth or alt_freq <= 0.01 \
-            or refBase not in ['A', 'T', 'G', 'C'] or total_depth <= 10:
+    if alt_freq <= 0.01 or refBase not in ['A', 'T', 'G', 'C']:
         continue
     # Cases that are to be prefiltered
     if total_depth > 30 and (alt_count <= 2 or alt_freq <= 0.001):
@@ -227,11 +210,11 @@ for line in lines:
 
     # Traverse through all the sngl_cell_ftr_obj and if has read support
     # further calculate the other quantities
-    for j, sngl_cell_ftr_obj in enumerate(All_single_cell_ftrs_list):
+    for j, sngl_cell_ftr_obj in enumerate(all_single_cell_ftrs_list):
         read_flag = U.checkReadPresence(sngl_cell_ftr_obj)
         if read_flag == 1:
-            alt_allele_flag = U.CheckAltAllele(sngl_cell_ftr_obj)
             sngl_cell_ftr_obj.Get_base_call_string_nd_quals(refBase)
+            alt_allele_flag = U.CheckAltAllele(sngl_cell_ftr_obj)
             if alt_allele_flag == 1:
                 # Update the list of total_alt_allele_count
                 total_alt_allele_count += sngl_cell_ftr_obj \
@@ -250,47 +233,46 @@ for line in lines:
         continue
 
     # Number of cells having read support
-    read_smpl_count = sum(read_flag_row)
+    read_smpl_count = read_flag_row.sum()
     # Number of cells having alternate allele support
-    alt_smpl_count = sum(alt_allele_flag_row)
-    alt_count =total_alt_allele_count.max() # update alt count
+    alt_smpl_count = alt_allele_flag_row.sum()
+    # Update alt count
+    alt_count = total_alt_allele_count.max()
     # Get the altBase
-    if alt_count > 0:
-        altBase = Base_dict[total_alt_allele_count.argmax()]
-    else:
+    if alt_count == 0:
         continue
+    altBase = Base_dict[total_alt_allele_count.argmax()]
 
     # Calculate prior_allele_mat
-    prior_allele_mat = U.Get_prior_allele_mat(read_smpl_count,
-        alt_smpl_count, cell_no_threshold, total_depth, alt_freq, pe)
+    prior_allele_mat = U.Get_prior_allele_mat(read_smpl_count, alt_smpl_count, 
+        cell_no_threshold, total_depth, alt_freq, pe)
 
     # Get prior_variant_number distribution (Eq. 11)
-    prior_variant_number = prior_variant_dict[read_supported_n_cells]
+    prior_var_no = prior_variant_dict[read_supported_n_cells]
 
-    for read_supported_cell in read_supported_cell_list:
-        read_supported_cell.Store_Addl_Info(refBase, altBase, alt_freq,
-            prior_allele_mat)
+    for cell in read_supported_cell_list:
+        cell.store_addl_info(refBase, altBase, alt_freq, prior_allele_mat)
 
     # Obtain the value of probability of SNV
-    Calc_var_prob_obj = Calc_Var_Prob(read_supported_cell_list)
-    (zero_variant_prob, denominator) = Calc_var_prob_obj\
-        .Calc_Zero_Var_Prob(n_cells, max_depth, nCr_matrix, pad,
-            prior_variant_number)
+    var_prob_obj = Calc_Var_Prob(read_supported_cell_list)
+    zero_var_prob, denominator = var_prob_obj \
+        .calc_zero_var_prob(n_cells, max_depth, nCr_matrix, pad, prior_var_no)
 
     # Probability of SNV passes the threshold
-    # if True:
-    if zero_variant_prob <= thr:
+    if zero_var_prob <= thr:
+
         func = partial(M.get_info_string, read_supported_cell_list, n_cells,
-            nCr_matrix, prior_variant_number, denominator, genotype_dict)
+            nCr_matrix, prior_var_no, denominator, genotype_dict)
 
-        output = []
-        for i in range(read_supported_n_cells):
-            output.append(func(i))
-
+        if debug:
+            output = [func(i) for i in range(read_supported_n_cells)]
+        else:
+            output = pool.map(func, range(read_supported_n_cells))
         read_supported_info_list = [p[0] for p in output]
         read_supported_barcodes = [p[1] for p in output]
+
         barcode = '<'
-        for single_cell_ftrs_list in All_single_cell_ftrs_list:
+        for single_cell_ftrs_list in all_single_cell_ftrs_list:
             if single_cell_ftrs_list.depth == 0:
                 info_list.append('./.')
                 barcode += 'X'
@@ -300,20 +282,21 @@ for line in lines:
                 barcode += read_supported_barcodes[0]
                 del read_supported_barcodes[0]
         barcode += '>'
-        if zero_variant_prob == 0:
+
+        if zero_var_prob == 0:
             qual = 99
         else:
-            qual = min(99, -10 * np.log10(zero_variant_prob))
+            qual = min(99, -10 * np.log10(zero_var_prob))
 
-        (AC, AF, AN) = U.calc_chr_count(barcode)
+        AC, AF, AN = U.calc_chr_count(barcode)
         if total_ref_depth > 0:
             baseQranksum = U.calc_base_q_rank_sum(read_supported_cell_list)
         else:
             baseQranksum = 0.0
-        QD = U.calc_qual_depth(barcode, All_single_cell_ftrs_list, qual)
+        QD = U.calc_qual_depth(barcode, all_single_cell_ftrs_list, qual)
         SOR = U.calc_strand_bias(read_supported_cell_list, alt_count)
-        max_prob_ratio = U.find_max_prob_ratio(Calc_var_prob_obj.matrix)
-        PSARR = U.calc_Per_Smpl_Alt_Ref_Ratio(
+        max_prob_ratio = U.find_max_prob_ratio(var_prob_obj.matrix)
+        PSARR = U.calc_per_smpl_alt_ref_ratio(
             total_ref_depth, alt_count, read_smpl_count, alt_smpl_count)
 
         # Write line to vcf output
@@ -328,8 +311,6 @@ for line in lines:
             filter_str = 'PASS'
         else:
             filter_str = '.'
-        vcf_record\
-            .get6fields(refBase, altBase, '.', qual, filter_str, info_str)
-        vcf_record.format_vcf(info_list)
-        vcf_record.get_passcode(barcode)
+        vcf_record.set_fields(refBase, altBase, '.', qual, filter_str, info_str,
+            info_list, barcode)
         vcf.print_my_record(vcf_record)
