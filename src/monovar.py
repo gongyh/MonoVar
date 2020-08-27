@@ -126,10 +126,13 @@ except AssertionError:
 
 # Obtain the RG IDs from the bam files
 bam_id_list = []
+import os
+cwd = os.getcwd()
 with open(bam_file_list, 'r') as f:
-    f_bam_list = f.read().split('\n')
+    f_bam_list = f.read().strip().split('\n')
     for f_bam in f_bam_list:
-        bam_id_list.append(U.Get_BAM_RG(f_bam.strip('\n')))
+        bam_file = os.path.join(cwd, f_bam.strip('\n'))
+        bam_id_list.append(U.Get_BAM_RG(bam_file))
 
 n_cells = len(bam_id_list)
 
