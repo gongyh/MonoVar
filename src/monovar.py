@@ -63,6 +63,9 @@ CF_flag = 1
 max_depth = 10000
 debug = 0
 
+Base_dict = {0: 'A', 1: 'T', 2: 'G', 3: 'C'}
+genotype_dict = {0: '0/0', 1: '0/1', 2: '1/1'}
+
 # Process the inputs
 argc = len(sys.argv)
 i = 1
@@ -125,30 +128,26 @@ except AssertionError:
     exit(3)
 
 # Obtain the RG IDs from the bam files
-bam_id_list = []
 with open(bam_file_list, 'r') as f:
     f_bam_list = f.read().strip().split('\n')
-    for f_bam in f_bam_list:
-        bam_file = os.path.join(cwd, f_bam.strip('\n'))
-        bam_id_list.append(U.Get_BAM_RG(bam_file))
-
+bam_id_list = [U.Get_BAM_RG(i.strip()) for i in f_bam_list]
 n_cells = len(bam_id_list)
-
-# Initialize the pool of multiprocessing
-pool = mp.Pool(processes=m_thread)
-
-# Constants to be used later
 cell_no_threshold = n_cells / 2
 # no of possible alternate alleles {0, 1, 2, ..., 2m}
 max_allele_cnt = 2 * n_cells + 1
-Base_dict = {0: 'A', 1: 'T', 2: 'G', 3: 'C'}
-genotype_dict = {0: '0/0', 1: '0/1', 2: '1/1'}
-
 # Table for all the required nCr
 nCr_matrix = U.Create_nCr_mat(max_allele_cnt)
-
 # Dictionary for holding all the priors for different values of n
 prior_variant_dict = {i: U.calc_prior(theta, i, 1) for i in range(n_cells + 1)}
+# List of all single_cell_ftr_pos object
+all_single_cell_ftrs_list = n_cells * [None]
+# Global list for storing which cell contains read support
+read_flag_row = np.zeros(n_cells)
+# Global list for storing which cell has alternate allele support
+alt_allele_flag_row = np.zeros(n_cells)
+
+# Initialize the pool of multiprocessing
+pool = mp.Pool(processes=m_thread)
 
 # Open VCF file and print header
 f_vcf = open(outfile, 'w')
@@ -157,22 +156,14 @@ vcf.populate_fields(bam_id_list)
 vcf.populate_reference(ref_file)
 vcf.print_header()
 
-# List of all single_cell_ftr_pos object
-all_single_cell_ftrs_list = n_cells * [None]
-# Global list for storing which cell contains read support
-read_flag_row = np.zeros(n_cells)
-# Global list for storing which cell has alternate allele support
-alt_allele_flag_row = np.zeros(n_cells)
-
 if sys.stdin.isatty():
     with open(pileup, 'r') as f:
-        lines = f.read().split('\n')
+        lines = f.read().strip().split('\n')
 else:
     lines = sys.stdin
 
 for line in lines:
-    line = line.strip('\n')
-    row = line.split('\t')
+    row = line.strip().split('\t')
     if line == '':
         continue
 

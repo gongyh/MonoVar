@@ -135,8 +135,8 @@ class Single_Cell_Ftrs_Pos:
             curr_base = self.final_bases[i]
             curr_base_key = (gt, curr_base)
             curr_err = self.base_qual_val_list[i]
-            # if curr_err > 0.1: 
-            #     continue
+            if curr_err > 0.5: 
+                continue
             prob_i = self.prior_allele_mat.getValue(curr_base_key)
             # Eq. 1, Eq. 2, Eq. 4
             prob = curr_err * (1 - prob_i) / 3 + (1 - curr_err) * prob_i
