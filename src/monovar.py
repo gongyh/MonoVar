@@ -29,6 +29,7 @@ SOFTWARE.
 """
 
 import sys
+import os
 import copy_reg
 import types
 import multiprocessing as mp
@@ -127,9 +128,12 @@ except AssertionError:
 # Obtain the RG IDs from the bam files
 bam_id_list = []
 with open(bam_file_list, 'r') as f:
-    f_bam_list = f.read().split('\n')
+    f_bam_list = f.read().strip('\n').split('\n')
     for f_bam in f_bam_list:
-        bam_id_list.append(U.Get_BAM_RG(f_bam.strip('\n')))
+        bam_file = f_bam.strip('\n')
+        if not os.path.exists(bam_file):
+            bam_file = os.path.join(os.getcwd(), bam_file)
+        bam_id_list.append(U.Get_BAM_RG(bam_file))
 
 n_cells = len(bam_id_list)
 
