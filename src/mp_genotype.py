@@ -81,10 +81,9 @@ class MP_single_cell_genotype:
         GQ = np.sort(PL)[1]
 
         final_genotype = genotype_dict[g_ind]
-        cell_barcode = str(g_ind)
         info = '{gt}:{ad_r},{ad_a}:{dp}:{gq:.0f}:{pl0:.0f},{pl1:.0f},{pl2:.0f}' \
             .format(gt=final_genotype, ad_r=current_cell_ftr_info.refDepth,
                 ad_a=current_cell_ftr_info.alt_count,
                 dp=current_cell_ftr_info.depth, gq=GQ, pl0=PL[0], pl1=PL[1],
                 pl2=PL[2])
-        return (info, cell_barcode)
+        return info, g_ind

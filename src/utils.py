@@ -308,14 +308,14 @@ class Utils_Functions:
     def calc_chr_count(self, barcode):
         AC = 0
         AN = 0
-        for c in barcode[1:-1]:
+        for c in barcode:
             if c == 'X':
                 continue
             else:
                 AN += 2
-                AC += int(c)
+                AC += c
         AF = float(AC) / AN
-        return (AC, AF, AN)
+        return AC, AF, AN
 
     def calc_base_q_rank_sum(self, read_supported_cell_list):
         ref_list = []
@@ -333,8 +333,8 @@ class Utils_Functions:
 
     def calc_qual_depth(self, barcode, all_single_cell_ftrs_list, qual):
         depth = 0
-        for i, c in enumerate(barcode[1:-1]):
-            if c == 'X' or c == '0':
+        for i, c in enumerate(barcode):
+            if c == 'X' or c == 0:
                 continue
             depth += all_single_cell_ftrs_list[i].depth
         if depth > 0:
@@ -346,19 +346,14 @@ class Utils_Functions:
 
     def Get_BAM_RG(self, bam_file):
         rows = pysam.view("-H", bam_file)
-        flag = 0
         for r in rows:
             if r.startswith('@RG'):
                 r_l = r.split('\t')
                 id_list = r_l[1].split(':')
-                flag = 1
                 return id_list[1]
-        if flag == 0:
-            bam_id_row = bam_file.split('/')
-            bam_id = bam_id_row[-1]
-            bam_id = bam_id.replace('..', '')
-            bam_id = bam_id.replace('~', '')
-            return bam_id
+
+        bam_id = bam_file.split('/')[-1].strip('..').strip('~')
+        return bam_id
 
 
     def calc_per_smpl_alt_ref_ratio(self, total_ref_depth, alt_count,
@@ -372,8 +367,8 @@ class Utils_Functions:
 
     def consensus_filter(self, barcode):
         g_count = 0
-        for c in barcode[1:-1]:
-            if c == '1' or c == '2':
+        for c in barcode:
+            if c == 1 or c == 2:
                 g_count += 1
 
         if g_count > 1:

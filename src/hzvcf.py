@@ -84,7 +84,7 @@ class VCFDocument():
                 'Approximate read depth (reads with MQ=255 or with bad mates are filtered)'),
             ('GQ', '1', 'Integer', 'Genotype Quality'),
             ('GT', '1', 'String', 'Genotype'),
-            ('PL', '3', 'Integer',
+            ('PL', 'G', 'Integer',
                 'Normalized, Phred-scaled likelihoods for genotypes as defined in the VCF specification')
         ]
         self.FORMAT_META = '\n'.join([

@@ -131,6 +131,7 @@ except AssertionError:
 with open(bam_file_list, 'r') as f:
     f_bam_list = f.read().strip().split('\n')
 bam_id_list = [U.Get_BAM_RG(i.strip()) for i in f_bam_list]
+
 n_cells = len(bam_id_list)
 cell_no_threshold = n_cells / 2
 # no of possible alternate alleles {0, 1, 2, ..., 2m}
@@ -260,21 +261,17 @@ for line in lines:
         output = [func(i) for i in range(read_supported_n_cells)]
     else:
         output = pool.map(func, range(read_supported_n_cells))
-    read_supported_info_list = [p[0] for p in output]
-    read_supported_barcodes = [p[1] for p in output]
 
-    barcode = '<'
+    barcode = []
     info_list = []
     for single_cell_ftrs_list in all_single_cell_ftrs_list:
         if single_cell_ftrs_list.depth == 0:
             info_list.append('./.')
-            barcode += 'X'
+            barcode.append('X')
         else:
-            info_list.append(read_supported_info_list[0])
-            del read_supported_info_list[0]
-            barcode += read_supported_barcodes[0]
-            del read_supported_barcodes[0]
-    barcode += '>'
+            info_cell, barcode_cell = output.pop(0)
+            info_list.append(info_cell)
+            barcode.append(barcode_cell)
 
     if zero_var_prob == 0:
         qual = 99
