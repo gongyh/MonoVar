@@ -39,7 +39,7 @@ from utils import Utils_Functions
 from mp_genotype import MP_single_cell_genotype
 from Single_Cell_Ftrs_Pos import Single_Cell_Ftrs_Pos
 from calc_variant_prob import Calc_Var_Prob
-from hzvcf import VCFDocument, VRecord
+from hzvcf import VCFDocument
 
 # Required for using multiprocessing
 def _pickle_method(m):
@@ -152,8 +152,8 @@ pool = mp.Pool(processes=m_thread)
 # Open VCF file and print header
 f_vcf = open(outfile, 'w')
 vcf = VCFDocument(f_vcf)
-vcf.populate_fields(bam_id_list)
-vcf.populate_reference(ref_file)
+vcf.set_files(bam_id_list)
+vcf.set_reference(ref_file)
 vcf.print_header()
 
 if sys.stdin.isatty():
@@ -197,8 +197,6 @@ for line in lines:
     read_supported_cell_list = []
     # Gloabal list for storing the alternate allele counts
     total_alt_allele_count = np.zeros(4, dtype=int)
-    # Global list for storing the indices of the cells having read support
-    info_list = ['GT:AD:DP:GQ:PL']
 
     # Traverse through all the sngl_cell_ftr_obj and if has read support
     # further calculate the other quantities
@@ -250,59 +248,67 @@ for line in lines:
     zero_var_prob, denominator = var_prob_obj \
         .calc_zero_var_prob(n_cells, max_depth, nCr_matrix, pad, prior_var_no)
 
-    # Probability of SNV passes the threshold
-    if zero_var_prob <= thr:
+    # Skip of probability of SNV does not pass the threshold
+    if zero_var_prob > thr:
+        continue
 
-        func = partial(M.get_info_string, read_supported_cell_list, n_cells,
-            nCr_matrix, prior_var_no, denominator, genotype_dict)
+    # Global list for storing the indices of the cells having read support
+    func = partial(M.get_info_string, read_supported_cell_list, n_cells,
+        nCr_matrix, prior_var_no, denominator, genotype_dict)
 
-        if debug:
-            output = [func(i) for i in range(read_supported_n_cells)]
+    if debug:
+        output = [func(i) for i in range(read_supported_n_cells)]
+    else:
+        output = pool.map(func, range(read_supported_n_cells))
+    read_supported_info_list = [p[0] for p in output]
+    read_supported_barcodes = [p[1] for p in output]
+
+    barcode = '<'
+    info_list = []
+    for single_cell_ftrs_list in all_single_cell_ftrs_list:
+        if single_cell_ftrs_list.depth == 0:
+            info_list.append('./.')
+            barcode += 'X'
         else:
-            output = pool.map(func, range(read_supported_n_cells))
-        read_supported_info_list = [p[0] for p in output]
-        read_supported_barcodes = [p[1] for p in output]
+            info_list.append(read_supported_info_list[0])
+            del read_supported_info_list[0]
+            barcode += read_supported_barcodes[0]
+            del read_supported_barcodes[0]
+    barcode += '>'
 
-        barcode = '<'
-        for single_cell_ftrs_list in all_single_cell_ftrs_list:
-            if single_cell_ftrs_list.depth == 0:
-                info_list.append('./.')
-                barcode += 'X'
-            else:
-                info_list.append(read_supported_info_list[0])
-                del read_supported_info_list[0]
-                barcode += read_supported_barcodes[0]
-                del read_supported_barcodes[0]
-        barcode += '>'
+    if zero_var_prob == 0:
+        qual = 99
+    else:
+        qual = min(99, int(np.round(-10 * np.log10(zero_var_prob))))
 
-        if zero_var_prob == 0:
-            qual = 99
-        else:
-            qual = min(99, -10 * np.log10(zero_var_prob))
+    AC, AF, AN = U.calc_chr_count(barcode)
+    if total_ref_depth > 0:
+        baseQranksum = U.calc_base_q_rank_sum(read_supported_cell_list)
+    else:
+        baseQranksum = 0
+    QD = U.calc_qual_depth(barcode, all_single_cell_ftrs_list, qual)
+    SOR = U.calc_strand_bias(read_supported_cell_list, alt_count)
+    max_prob_ratio = U.find_max_prob_ratio(var_prob_obj.matrix)
+    PSARR = U.calc_per_smpl_alt_ref_ratio(
+        total_ref_depth, alt_count, read_smpl_count, alt_smpl_count)
 
-        AC, AF, AN = U.calc_chr_count(barcode)
-        if total_ref_depth > 0:
-            baseQranksum = U.calc_base_q_rank_sum(read_supported_cell_list)
-        else:
-            baseQranksum = 0.0
-        QD = U.calc_qual_depth(barcode, all_single_cell_ftrs_list, qual)
-        SOR = U.calc_strand_bias(read_supported_cell_list, alt_count)
-        max_prob_ratio = U.find_max_prob_ratio(var_prob_obj.matrix)
-        PSARR = U.calc_per_smpl_alt_ref_ratio(
-            total_ref_depth, alt_count, read_smpl_count, alt_smpl_count)
+    # Write record/line to vcf output
+    info_str = 'AC={ac};AF={af:.2f};AN={an};BaseQRankSum={bqrs:.2f};DP={dp};' \
+            'QD={qd:.4f};SOR={sor:.2f};MPR={mpr:.2f};PSARR={psarr:.2f}' \
+        .format(ac=AC, af=AF, an=AN, bqrs=baseQranksum, dp=total_depth,
+            qd=QD, sor=SOR, mpr=max_prob_ratio, psarr=PSARR)
+    sample_str = '\t'.join(info_list)
 
-        # Write line to vcf output
-        vcf_record = VRecord(contig, pos)
-        info_record = [str(AC), "%.2f" % AF, str(AN), "%.2f" % baseQranksum,
-            str(total_depth), str(QD), "%.2f" % SOR,
-            "%.2f" % max_prob_ratio, "%.2f" % PSARR]
-        info_str = ';'.join(['{}={}'.format(j[0], info_record[i]) \
-            for i, j in enumerate(vcf.info_fields)])
-
-        if CF_flag == 1 and U.consensus_filter(barcode):
+    if CF_flag == 1:
+        if U.consensus_filter(barcode):
             filter_str = 'PASS'
         else:
-            filter_str = '.'
-        vcf_record.set_fields(refBase, altBase, '.', qual, filter_str, info_str,
-            info_list, barcode)
-        vcf.print_my_record(vcf_record)
+            filter_str = 'NoConsensus'
+    else:
+        filter_str = '.'
+
+    vcf_rec_data = [contig, str(pos), '.', refBase, altBase, str(qual),
+        filter_str, info_str, 'GT:AD:DP:GQ:PL', sample_str]
+    vcf.print_record(vcf_rec_data)
+
+vcf.close()

@@ -67,7 +67,7 @@ class MP_single_cell_genotype:
                 g_ind = 2
             else:
                 g_ind = 1
-            norm_p_list = np.zeros()
+            norm_p_list = np.zeros(3)
             norm_p_list[g_ind] = 1
         else:
             g_ind = p_list.argmax()

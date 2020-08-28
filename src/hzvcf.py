@@ -27,109 +27,97 @@ SOFTWARE.
 
 """
 
-import argparse
-import os
-import sys
-import gzip
-from subprocess import Popen, PIPE, check_call
-import re
 import time
 
 VCF_meta_template = """##fileformat=VCFv4.1
-##fileDate={_t.tm_year}-{_t.tm_mon}-{_t.tm_mday}
-##source=MonoVar
-{_d.FILTER_META}{_d.INFO_META}{_d.FORMAT_META}{_d.REF_META}#CHROM\tPOS\tID\tREF\tALT\tQUAL\tFILTER\tINFO\tFORMAT\t{_d.FILES_META}
+##fileDate={_d.time.tm_year}-{_d.time.tm_mon}-{_d.time.tm_mday}
+##source=MonoVar_NB
+{_d.FILTER_META}
+{_d.INFO_META}
+{_d.FORMAT_META}
+{_d.REF_META}
+#CHROM\tPOS\tID\tREF\tALT\tQUAL\tFILTER\tINFO\tFORMAT\t{_d.FILES_META}
 """
-
-VCF_record_template = "{_r.CHROM}\t{_r.POS}\t{_r.ID}\t{_r.REF}\t{_r.ALT}\t{_r.QUAL}\t{_r.FILTER}\t{_r.INFO}\t{_r.FORMAT}\t{_r.PASSCODE}\n"
-
 
 class VCFDocument():
 
     def __init__(self, outf):
-
-        self.time = time.ctime()
-
-        self.info_fields = []
-        self.filter_fields = []
-        self.format_fields = []
+        self.time = time.localtime()
         self.outf = outf
 
-    def populate_fields(self, bam_id_list):
-        self.filter_fields.append(('LowQual', 'Low quality'))
-        self.format_fields.append(
-            ('AD', '.', 'Integer', 'Allelic depths for the ref and alt alleles in the order listed'))
-        self.format_fields.append(
-            ('DP', '1', 'Integer', 'Approximate read depth (reads with MQ=255 or with bad mates are filtered)'))
-        self.format_fields.append(('GQ', '1', 'Integer', 'Genotype Quality'))
-        self.format_fields.append(('GT', '1', 'String', 'Genotype'))
-        self.format_fields.append(
-            ('PL', 'G', 'Integer', 'Normalized, Phred-scaled likelihoods for genotypes as defined in the VCF specification'))
-        self.info_fields.append(
-            ('AC', 'A', 'Integer', 'Allele count in genotypes, for each ALT allele, in the same order as listed'))
-        self.info_fields.append(
-            ('AF', 'A', 'Float', 'Allele Frequency, for each ALT allele, in the same order as listed'))
-        self.info_fields.append(
-            ('AN', '1', 'Integer', 'Total number of alleles in called genotypes'))
-        self.info_fields.append(
-            ('BaseQRankSum', '1', 'Float', 'Z-score from Wilcoxon rank sum test of Alt Vs. Ref base qualities'))
-        self.info_fields.append(
-            ('DP', '1', 'Integer', 'Approximate read depth; some reads may have been filtered'))
-        self.info_fields.append(
-            ('QD', '1', 'Float', 'Variant Confidence/Quality by Depth'))
-        self.info_fields.append(
-            ('SOR', '1', 'Float', 'Symmetric Odds Ratio of 2x2 contingency table to detect strand bias'))
-        self.info_fields.append(
-            ('MPR', '1', 'Float', 'Log Odds Ratio of maximum value of probability of observing non-ref allele to the probability of observing zero non-ref allele'))
-        self.info_fields.append(
-            ('PSARR', '1', 'Float', 'Ratio of per-sample Alt allele supporting reads to Ref allele supporting reads'))
-        self.files_list = bam_id_list
+        self.info_fields = [
+            ('AC', 'A', 'Integer',
+                'Allele count in genotypes, for each ALT allele, in the same order as listed'),
+            ('AF', 'A', 'Float',
+                'Allele Frequency, for each ALT allele, in the same order as listed'),
+            ('AN', '1', 'Integer',
+                'Total number of alleles in called genotypes'),
+            ('BaseQRankSum', '1', 'Float',
+                'Z-score from Wilcoxon rank sum test of Alt Vs. Ref base qualities'),
+            ('DP', '1', 'Integer',
+                'Approximate read depth; some reads may have been filtered'),
+            ('QD', '1', 'Float',
+                'Variant Confidence/Quality by Depth'),
+            ('SOR', '1', 'Float',
+                'Symmetric Odds Ratio of 2x2 contingency table to detect strand bias'),
+            ('MPR', '1', 'Float',
+                'Log Odds Ratio of maximum value of probability of observing non-ref allele to the probability of observing zero non-ref allele'),
+            ('PSARR', '1', 'Float',
+                'Ratio of per-sample Alt allele supporting reads to Ref allele supporting reads')
+        ]
+        self.INFO_META = '\n'.join([
+            '##INFO=<ID={},Number={},Type={},Description="{}">'.format(*i) \
+                for i in self.info_fields])
 
-    def populate_reference(self, ref_file):
+        self.filter_fields = [
+            ('LowQual', 'Low quality'),
+            ('NoConsensus', 'Only 1 sample contains called SNV')
+        ]
+        self.FILTER_META = '\n'.join([
+            '##FILTER=<ID={},Description="{}">'.format(*i) \
+                for i in self.filter_fields])
+
+        self.format_fields = [
+            ('AD', '.', 'Integer', 
+                'Allelic depths for the ref and alt alleles in the order listed'),
+            ('DP', '1', 'Integer',
+                'Approximate read depth (reads with MQ=255 or with bad mates are filtered)'),
+            ('GQ', '1', 'Integer', 'Genotype Quality'),
+            ('GT', '1', 'String', 'Genotype'),
+            ('PL', '3', 'Integer',
+                'Normalized, Phred-scaled likelihoods for genotypes as defined in the VCF specification')
+        ]
+        self.FORMAT_META = '\n'.join([
+            '##FORMAT=<ID={},Number={},Type={},Description="{}">'.format(*i) \
+                for i in self.format_fields])
+        
+        self.ref_file = None
+        self.REF_META = ''
+        self.files_list = []
+        self.FILES_META = ''
+
+
+    def set_files(self, bam_id_list):
+        self.files_list.extend(bam_id_list)
+        self.FILES_META = '\t'.join(self.files_list)
+        
+
+    def set_reference(self, ref_file):
         self.ref_file = ref_file
+        self.REF_META = '##reference=file:{}'.format(ref_file)
+
 
     def print_header(self):
+        self.outf.write(VCF_meta_template.format(_d=self))
 
-        self.FILTER_META = ''.join(
-            '##FILTER=<ID=%s,Description="%s">\n' % _ for _ in self.filter_fields)
-        self.FORMAT_META = ''.join(
-            '##FORMAT=<ID=%s,Number=%s,Type=%s,Description="%s">\n' % _ for _ in self.format_fields)
-        self.INFO_META = ''.join(
-            '##INFO=<ID=%s,Number=%s,Type=%s,Description="%s">\n' % _ for _ in self.info_fields)
-        self.FILES_META = '\t'.join(self.files_list)
-        self.REF_META = '##reference=file:{0}\n'.format(self.ref_file)
-        self.outf.write(VCF_meta_template.format(_d=self, _t=time.localtime()))
 
-    def print_record(self, record):
+    def print_record(self, rec_data):
+        rec_str = '\t'.join(rec_data) + '\n'
+        self.outf.write(rec_str)
 
-        record.INFO = ';'.join("%s=%s" % (
-            _[0], str(record.info[_[0]])) for _ in self.info_fields if _[0] in record.info)
-        self.outf.write(VCF_record_template.format(_r=record))
-
-    def print_my_record(self, record):
-        self.outf.write(VCF_record_template.format(_r=record))
 
     def close(self):
-
         self.outf.close()
-
-
-class VRecord:
-    def __init__(self, chrm, pos):
-        self.CHROM = chrm
-        self.POS = pos
-
-
-    def set_fields(self, ref, alt, id_in, qual, filter_in, info, samples,
-                barcode):
-        self.ID = id_in
-        self.REF = ref
-        self.ALT = alt
-        self.QUAL = str(qual)
-        self.FILTER = filter_in
-        self.INFO = info
-        self.FORMAT = "\t".join(samples)
-        self.PASSCODE = barcode
 
 
 if __name__ == '__main__':
