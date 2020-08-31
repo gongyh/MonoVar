@@ -88,8 +88,11 @@ def parse_args():
     parser.add_argument('-m', '--cpus', type=int, default=1,
         help='Number of cpus to use for threading. Default = 1.')
     # newly added arguments:
-    parser.add_argument('-md', '--max_depth', type=int, default=10000,
+    parser.add_argument('-mpd', '--max_pileup_depth', type=int, default=10000,
         help='Maximum pileup depth to take into account. Default = 10000.')
+    parser.add_argument('-mrd', '--min_read_depth', type=int, default=1,
+        help='Minimum read depth required for SNV calling (per cell-locus). ' \
+            'Default = 1.')
     parser.add_argument('-th', '--theta', type=float, default=0.001,
         help='Heterozygosity rate theta. Default = 0.001.')
     parser.add_argument('-d', '--debug', action='store_true',
@@ -175,7 +178,7 @@ def main(args):
         # Traverse through all the sngl_cell_ftr_obj and if has read support
         # further calculate the other quantities
         for j, sngl_cell_ftr_obj in enumerate(all_single_cell_ftrs_list):
-            read_flag = sngl_cell_ftr_obj.depth != 0
+            read_flag = sngl_cell_ftr_obj.depth >= args.min_read_depth
             if read_flag:
                 sngl_cell_ftr_obj.Get_base_call_string_nd_quals(refBase)
                 alt_allele_flag = \
@@ -221,8 +224,8 @@ def main(args):
         # Obtain the value of probability of SNV
         var_prob_obj = Calc_Var_Prob(read_supported_cell_list)
         zero_var_prob, denominator = var_prob_obj \
-            .calc_zero_var_prob(n_cells, args.max_depth, nCr_matrix, args.pad,
-                prior_var_no)
+            .calc_zero_var_prob(n_cells, args.max_pileup_depth, nCr_matrix,
+                args.pad, prior_var_no)
 
         # Skip of probability of SNV does not pass the threshold
         if zero_var_prob > args.threshold:

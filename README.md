@@ -52,10 +52,12 @@ The arguments of Monovar are as follows:
 -m: Number of threads to use in multiprocessing (Default value: 1)
 -c: Flag indicating whether to use Consensus Filter (CF) or not (Possible values: 0, 1; Default Value: 1; if 1 then CF is used, otherwise not used)  
 -d: Flag indicating debugging mode/no threading (1: enabled)
-
+# Newly added arguments:
 -i: pileup file (instead of stdin)
--md: Maximum pileup depth to take into account (Default value: 10000)
+-mpd: Maximum pileup depth to take into account (Default value: 10000)
+-mrd: Minimum read depth required for SNV calling (per cell-locus) (Default value = 1)
 -th: Heterozygosity rate theta (Default value: 0.001)
 -d: Debbuging mode: Turn of threading
+
 ```
 We recommend using cutoff 40 for mapping quality when using ```samtools mpileup```. To use the probabilistic realignment for the computation of Base Alignment Quality, drop the ```-B``` while running ```samtools mpileup```.
