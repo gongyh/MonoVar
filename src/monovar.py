@@ -29,7 +29,11 @@ SOFTWARE.
 """
 
 import sys
-import copy_reg
+import argparse
+if sys.version_info.major == 3:
+    import copyreg as copy_reg
+else:
+    import copy_reg
 import types
 import multiprocessing as mp
 import numpy as np
@@ -54,258 +58,234 @@ U = Utils_Functions()
 M = MP_single_cell_genotype()
 
 # Default values
-pe = 0.002
-pad = 0.2
-thr = 0.05
-theta = 0.001  # Heterozygosity rate
-m_thread = 1
-CF_flag = 1
-max_depth = 10000
-debug = 0
-
 Base_dict = {0: 'A', 1: 'T', 2: 'G', 3: 'C'}
-genotype_dict = {0: '0/0', 1: '0/1', 2: '1/1'}
 
-# Process the inputs
-argc = len(sys.argv)
-i = 1
-input_args = {}
-while (i < argc):
-    if (sys.argv[i] == '-i'):
-        pileup = sys.argv[i + 1]         # input pileup file
-    elif (sys.argv[i] == '-n'):
-        n_cells = int(sys.argv[i + 1])      # Number of input bam files
-    elif (sys.argv[i] == '-p'):
-        pe = float(sys.argv[i + 1])    	  # probability of error
-    elif (sys.argv[i] == '-d'):
-        pd = float(sys.argv[i + 1])    	  # probability of deamination error
-    elif (sys.argv[i] == '-a'):
-        pad = float(sys.argv[i + 1])  	  # Probability of ADO
-    elif (sys.argv[i] == '-f'):
-        ref_file = sys.argv[i + 1]          # Reference Genome File
-        input_args['-f'] = 'Provided'
-    elif (sys.argv[i] == '-b'):
-        bam_file_list = sys.argv[i + 1]	  # File containing list of bam files
-        input_args['-b'] = 'Provided'
-    elif (sys.argv[i] == '-o'):
-        outfile = sys.argv[i + 1]      	  # Output File
-        input_args['-o'] = 'Provided'
-    elif (sys.argv[i] == '-t'):
-        # threshold to use for calling variant
-        thr = float(sys.argv[i + 1])
-    elif (sys.argv[i] == '-c'):
-        CF_flag = int(sys.argv[i + 1])      # Flag for using Consensus Filter
-    elif (sys.argv[i] == '-m'):
-        # Number of threads to use in multiprocessing
-        m_thread = int(sys.argv[i + 1])
-    elif (sys.argv[i] == '-debug'):
-        # Number of threads to use in multiprocessing
-        debug = int(sys.argv[i + 1])
-    i = i + 2
+def parse_args():
+    parser = argparse.ArgumentParser(
+        prog='MonoVar',
+        usage='samtools mpileup --fasta-ref --bam-list <BAMS> [options] ' \
+            '| monovar.py -b <BAMS> -f <REF> -o <OUTPUT> [options]',
+        description='*** SNV calling on single-cell DNA data. ***'
+    )
+    parser.add_argument('--version', action='version', version='1.0.0_NB')
 
- 
-try:
-    b = input_args['-f']
-except KeyError:
-    print('Error: Reference genome file not provided. ' \
-        'Use "-f"" for reference genome file.\n')
-    exit(3)
-try:
-    b = input_args['-b']
-except KeyError:
-    print('Error: List of Bam files not provided. ' \
-        'Use "-b"" for list of Bam files.\n')
-    exit(3)
-try:
-    b = input_args['-o']
-except KeyError:
-    print('Error: Output file not provided. Use "-o" for Output file.\n')
-    exit(3)
-try:
-    assert CF_flag <= 1
-except AssertionError:
-    print('CF_flag can have value 0 or 1. Use "-c" with proper value.\n')
-    exit(3)
+    parser.add_argument('-i', '--pileup', type=str,
+        help='Pileup file. If not given, input is read from stdin.')
+    parser.add_argument('-p', '--pe', type=float, default=0.002,
+        help='Probability of an error. Default = 0.002.')
+    parser.add_argument('-a', '--pad', type=float, default=0.2,
+        help='Probability of an allelic dropout. Default = 0.2.')
+    parser.add_argument('-f', '--ref_file', type=str, required=True,
+        help='Reference genome file in .fa format.')
+    parser.add_argument('-b', '--bam_file_list', type=str, required=True,
+        help='List of Bam files in a text format.')
+    parser.add_argument('-o', '--output', type=str, required=True,
+        help='Output file (should end on ".vcf").')
+    parser.add_argument('-t', '--threshold', type=float, default=0.05,
+        help='Threshold to use for calling variant. Default = 0.05.')
+    parser.add_argument('-c', '--CF_flag', type=int, choices=[0, 1], default=1,
+        help='Flag for consensus filtering. Default = 1.')
+    parser.add_argument('-m', '--cpus', type=int, default=1,
+        help='Number of cpus to use for threading. Default = 1.')
+    # newly added arguments:
+    parser.add_argument('-md', '--max_depth', type=int, default=10000,
+        help='Maximum pileup depth to take into account. Default = 10000.')
+    parser.add_argument('-th', '--theta', type=float, default=0.001,
+        help='Heterozygosity rate theta. Default = 0.001.')
+    parser.add_argument('-d', '--debug', action='store_true',
+        help='Turn of threading. Default = False.')
 
-# Obtain the RG IDs from the bam files
-with open(bam_file_list, 'r') as f:
-    f_bam_list = f.read().strip().split('\n')
-bam_id_list = [U.Get_BAM_RG(i.strip()) for i in f_bam_list]
+    args = parser.parse_args()
+    return args
 
-n_cells = len(bam_id_list)
-cell_no_threshold = n_cells / 2
-# no of possible alternate alleles {0, 1, 2, ..., 2m}
-max_allele_cnt = 2 * n_cells + 1
-# Table for all the required nCr
-nCr_matrix = U.Create_nCr_mat(max_allele_cnt)
-# Dictionary for holding all the priors for different values of n
-prior_variant_dict = {i: U.calc_prior(theta, i, 1) for i in range(n_cells + 1)}
-# List of all single_cell_ftr_pos object
-all_single_cell_ftrs_list = n_cells * [None]
-# Global list for storing which cell contains read support
-read_flag_row = np.zeros(n_cells)
-# Global list for storing which cell has alternate allele support
-alt_allele_flag_row = np.zeros(n_cells)
 
-# Initialize the pool of multiprocessing
-pool = mp.Pool(processes=m_thread)
+def main(args):
+    # Obtain the RG IDs from the bam files
+    with open(args.bam_file_list, 'r') as f:
+        f_bam_list = f.read().strip().split('\n')
+    bam_id_list = [U.get_BAM_RG(i.strip()) for i in f_bam_list]
 
-# Open VCF file and print header
-f_vcf = open(outfile, 'w')
-vcf = VCFDocument(f_vcf)
-vcf.set_files(bam_id_list)
-vcf.set_reference(ref_file)
-vcf.print_header()
+    n_cells = len(bam_id_list)
+    n_cells_threshold = n_cells / 2
+    # no of possible alternate alleles {0, 1, 2, ..., 2m}
+    max_allele_cnt = 2 * n_cells + 1
+    # Table for all the required nCr
+    nCr_matrix = U.get_nCr_mat(max_allele_cnt)
+    # Dictionary for holding all the priors for different values of n
+    prior_variant_dict = {i: U.calc_prior(args.theta, i, 1) \
+        for i in range(n_cells + 1)}
+    # Lists for all single_cell_ftr_pos objects, cells containing read support,
+    # and cell containing alternate allele support
+    all_single_cell_ftrs_list = np.zeros(n_cells, dtype=object)
+    read_flag_row = np.zeros(n_cells, dtype=bool)
+    alt_allele_flag_row = np.zeros(n_cells, dtype=bool)
 
-if sys.stdin.isatty():
-    with open(pileup, 'r') as f:
-        lines = f.read().strip().split('\n')
-else:
-    lines = sys.stdin
+    # Initialize the pool of multiprocessing
+    pool = mp.Pool(processes=args.cpus)
 
-for line in lines:
-    row = line.strip().split('\t')
-    if line == '':
-        continue
+    # Open VCF file and print header
+    f_vcf = open(args.output, 'w')
+    vcf = VCFDocument(f_vcf)
+    vcf.set_files(bam_id_list)
+    vcf.set_reference(args.ref_file)
+    vcf.print_header()
 
-    contig = row[0]
-    pos = int(row[1])
-    refBase = U.refineBase(row[2])
-    
-    total_depth = 0
-    total_ref_depth = 0
-    for i in range(1, n_cells + 1):
-        curr_cell_pos_ftrs = Single_Cell_Ftrs_Pos(refBase, row[3*i: 3*i + 3])
-        total_depth += curr_cell_pos_ftrs.depth
-        total_ref_depth += curr_cell_pos_ftrs.refDepth
-        all_single_cell_ftrs_list[i - 1] = curr_cell_pos_ftrs
+    if sys.stdin.isatty():
+        with open(args.pileup, 'r') as f:
+            lines = f.read().strip().split('\n')
+    else:
+        lines = sys.stdin
 
-    if total_depth <= 10 or total_depth == total_ref_depth:
-        continue
+    for line in lines:
+        row = line.strip().split('\t')
+        if line == '':
+            continue
 
-    alt_count = total_depth - total_ref_depth
-    alt_freq = float(alt_count) / total_depth
+        contig = row[0]
+        pos = int(row[1])
+        refBase = row[2].strip().upper()
+        
+        total_depth = 0
+        total_ref_depth = 0
+        for i in range(1, n_cells + 1):
+            curr_cell_pos_ftrs = Single_Cell_Ftrs_Pos(refBase, row[3*i: 3*i + 3])
+            total_depth += curr_cell_pos_ftrs.depth
+            total_ref_depth += curr_cell_pos_ftrs.refDepth
+            all_single_cell_ftrs_list[i - 1] = curr_cell_pos_ftrs
 
-    # No reads supporting alternate allele, so no operations needed
-    if alt_freq <= 0.01 or refBase not in ['A', 'T', 'G', 'C']:
-        continue
-    # Cases that are to be prefiltered
-    if total_depth > 30 and (alt_count <= 2 or alt_freq <= 0.001):
-        continue
-    
-    # List for storing the sngl_cell_objs that have read support, will be
-    # further used in the model
-    read_supported_cell_list = []
-    # Gloabal list for storing the alternate allele counts
-    total_alt_allele_count = np.zeros(4, dtype=int)
+        if total_depth <= 10 or total_depth == total_ref_depth:
+            continue
 
-    # Traverse through all the sngl_cell_ftr_obj and if has read support
-    # further calculate the other quantities
-    for j, sngl_cell_ftr_obj in enumerate(all_single_cell_ftrs_list):
-        read_flag = U.checkReadPresence(sngl_cell_ftr_obj)
-        if read_flag == 1:
-            sngl_cell_ftr_obj.Get_base_call_string_nd_quals(refBase)
-            alt_allele_flag = U.CheckAltAllele(sngl_cell_ftr_obj)
-            if alt_allele_flag == 1:
-                # Update the list of total_alt_allele_count
-                total_alt_allele_count += sngl_cell_ftr_obj \
-                    .get_Alt_Allele_Count()
-            # Populate the list of read supported cells
-            read_supported_cell_list.append(sngl_cell_ftr_obj)
+        alt_count = total_depth - total_ref_depth
+        alt_freq = float(alt_count) / total_depth
+
+        # No reads supporting alternate allele, so no operations needed
+        if alt_freq <= 0.01 or refBase not in ['A', 'T', 'G', 'C']:
+            continue
+        # Cases that are to be prefiltered
+        if total_depth > 30 and (alt_count <= 2 or alt_freq <= 0.001):
+            continue
+        
+        # List for storing the sngl_cell_objs that have read support, will be
+        # further used in the model
+        read_supported_cell_list = []
+        # Gloabal list for storing the alternate allele counts
+        total_alt_allele_count = np.zeros(4, dtype=int)
+
+        # Traverse through all the sngl_cell_ftr_obj and if has read support
+        # further calculate the other quantities
+        for j, sngl_cell_ftr_obj in enumerate(all_single_cell_ftrs_list):
+            read_flag = sngl_cell_ftr_obj.depth != 0
+            if read_flag:
+                sngl_cell_ftr_obj.Get_base_call_string_nd_quals(refBase)
+                alt_allele_flag = \
+                    sngl_cell_ftr_obj.depth - sngl_cell_ftr_obj.refDepth != 0
+                if alt_allele_flag:
+                    # Update the list of total_alt_allele_count
+                    total_alt_allele_count += sngl_cell_ftr_obj \
+                        .get_Alt_Allele_Count()
+                # Populate the list of read supported cells
+                read_supported_cell_list.append(sngl_cell_ftr_obj)
+            else:
+                alt_allele_flag = False
+            read_flag_row[j] = read_flag
+            alt_allele_flag_row[j] = alt_allele_flag
+
+        # Operations on the single cells with read support
+        # Number of cells with read support
+        read_supported_n_cells = len(read_supported_cell_list)
+        if read_supported_n_cells == 0:
+            continue
+
+        # Number of cells having read support
+        read_smpl_count = read_flag_row.sum()
+        # Number of cells having alternate allele support
+        alt_smpl_count = alt_allele_flag_row.sum()
+        # Update alt count
+        alt_count = total_alt_allele_count.max()
+        # Get the altBase
+        if alt_count == 0:
+            continue
+        altBase = Base_dict[total_alt_allele_count.argmax()]
+
+        # Calculate prior_allele_mat
+        prior_allele_mat = U.get_prior_allele_mat(read_smpl_count, alt_smpl_count, 
+            n_cells_threshold, total_depth, alt_freq, args.pe)
+
+        # Get prior_variant_number distribution (Eq. 11)
+        prior_var_no = prior_variant_dict[read_supported_n_cells]
+
+        for cell in read_supported_cell_list:
+            cell.store_addl_info(refBase, altBase, alt_freq, prior_allele_mat)
+
+        # Obtain the value of probability of SNV
+        var_prob_obj = Calc_Var_Prob(read_supported_cell_list)
+        zero_var_prob, denominator = var_prob_obj \
+            .calc_zero_var_prob(n_cells, args.max_depth, nCr_matrix, args.pad,
+                prior_var_no)
+
+        # Skip of probability of SNV does not pass the threshold
+        if zero_var_prob > args.threshold:
+            continue
+
+        # Global list for storing the indices of the cells having read support
+        func = partial(M.get_info_string, read_supported_cell_list, n_cells,
+            nCr_matrix, prior_var_no, denominator)
+
+        if args.debug:
+            output = [func(i) for i in range(read_supported_n_cells)]
         else:
-            alt_allele_flag = 0
-        read_flag_row[j] = read_flag
-        alt_allele_flag_row[j] = alt_allele_flag
+            output = pool.map(func, range(read_supported_n_cells))
 
-    # Operations on the single cells with read support
-    # Number of cells with read support
-    read_supported_n_cells = len(read_supported_cell_list)
-    if read_supported_n_cells == 0:
-        continue
+        barcode = []
+        info_list = []
+        for single_cell_ftrs_list in all_single_cell_ftrs_list:
+            if single_cell_ftrs_list.depth == 0:
+                info_list.append('./.')
+                barcode.append('X')
+            else:
+                info_cell, barcode_cell = output.pop(0)
+                info_list.append(info_cell)
+                barcode.append(barcode_cell)
 
-    # Number of cells having read support
-    read_smpl_count = read_flag_row.sum()
-    # Number of cells having alternate allele support
-    alt_smpl_count = alt_allele_flag_row.sum()
-    # Update alt count
-    alt_count = total_alt_allele_count.max()
-    # Get the altBase
-    if alt_count == 0:
-        continue
-    altBase = Base_dict[total_alt_allele_count.argmax()]
-
-    # Calculate prior_allele_mat
-    prior_allele_mat = U.Get_prior_allele_mat(read_smpl_count, alt_smpl_count, 
-        cell_no_threshold, total_depth, alt_freq, pe)
-
-    # Get prior_variant_number distribution (Eq. 11)
-    prior_var_no = prior_variant_dict[read_supported_n_cells]
-
-    for cell in read_supported_cell_list:
-        cell.store_addl_info(refBase, altBase, alt_freq, prior_allele_mat)
-
-    # Obtain the value of probability of SNV
-    var_prob_obj = Calc_Var_Prob(read_supported_cell_list)
-    zero_var_prob, denominator = var_prob_obj \
-        .calc_zero_var_prob(n_cells, max_depth, nCr_matrix, pad, prior_var_no)
-
-    # Skip of probability of SNV does not pass the threshold
-    if zero_var_prob > thr:
-        continue
-
-    # Global list for storing the indices of the cells having read support
-    func = partial(M.get_info_string, read_supported_cell_list, n_cells,
-        nCr_matrix, prior_var_no, denominator, genotype_dict)
-
-    if debug:
-        output = [func(i) for i in range(read_supported_n_cells)]
-    else:
-        output = pool.map(func, range(read_supported_n_cells))
-
-    barcode = []
-    info_list = []
-    for single_cell_ftrs_list in all_single_cell_ftrs_list:
-        if single_cell_ftrs_list.depth == 0:
-            info_list.append('./.')
-            barcode.append('X')
+        if zero_var_prob == 0:
+            qual = 99
         else:
-            info_cell, barcode_cell = output.pop(0)
-            info_list.append(info_cell)
-            barcode.append(barcode_cell)
+            qual = min(99, int(np.round(-10 * np.log10(zero_var_prob))))
 
-    if zero_var_prob == 0:
-        qual = 99
-    else:
-        qual = min(99, int(np.round(-10 * np.log10(zero_var_prob))))
-
-    AC, AF, AN = U.calc_chr_count(barcode)
-    if total_ref_depth > 0:
-        baseQranksum = U.calc_base_q_rank_sum(read_supported_cell_list)
-    else:
-        baseQranksum = 0
-    QD = U.calc_qual_depth(barcode, all_single_cell_ftrs_list, qual)
-    SOR = U.calc_strand_bias(read_supported_cell_list, alt_count)
-    max_prob_ratio = U.find_max_prob_ratio(var_prob_obj.matrix)
-    PSARR = U.calc_per_smpl_alt_ref_ratio(
-        total_ref_depth, alt_count, read_smpl_count, alt_smpl_count)
-
-    # Write record/line to vcf output
-    info_str = 'AC={ac};AF={af:.2f};AN={an};BaseQRankSum={bqrs:.2f};DP={dp};' \
-            'QD={qd:.4f};SOR={sor:.2f};MPR={mpr:.2f};PSARR={psarr:.2f}' \
-        .format(ac=AC, af=AF, an=AN, bqrs=baseQranksum, dp=total_depth,
-            qd=QD, sor=SOR, mpr=max_prob_ratio, psarr=PSARR)
-    sample_str = '\t'.join(info_list)
-
-    if CF_flag == 1:
-        if U.consensus_filter(barcode):
-            filter_str = 'PASS'
+        AC, AF, AN = U.calc_chr_count(barcode)
+        if total_ref_depth > 0:
+            baseQranksum = U.calc_base_q_rank_sum(read_supported_cell_list)
         else:
-            filter_str = 'NoConsensus'
-    else:
-        filter_str = '.'
+            baseQranksum = 0
+        QD = U.calc_qual_depth(barcode, all_single_cell_ftrs_list, qual)
+        SOR = U.calc_strand_bias(read_supported_cell_list, alt_count)
+        max_prob_ratio = U.find_max_prob_ratio(var_prob_obj.matrix)
+        PSARR = U.calc_per_smpl_alt_ref_ratio(
+            total_ref_depth, alt_count, read_smpl_count, alt_smpl_count)
 
-    vcf_rec_data = [contig, str(pos), '.', refBase, altBase, str(qual),
-        filter_str, info_str, 'GT:AD:DP:GQ:PL', sample_str]
-    vcf.print_record(vcf_rec_data)
+        # Write record/line to vcf output
+        info_str = 'AC={ac};AF={af:.2f};AN={an};BaseQRankSum={bqrs:.2f};DP={dp};' \
+                'QD={qd:.4f};SOR={sor:.2f};MPR={mpr:.2f};PSARR={psarr:.2f}' \
+            .format(ac=AC, af=AF, an=AN, bqrs=baseQranksum, dp=total_depth,
+                qd=QD, sor=SOR, mpr=max_prob_ratio, psarr=PSARR)
+        sample_str = '\t'.join(info_list)
 
-vcf.close()
+        if args.CF_flag:
+            if U.consensus_filter(barcode):
+                filter_str = 'PASS'
+            else:
+                filter_str = 'NoConsensus'
+        else:
+            filter_str = '.'
+
+        vcf_rec_data = [contig, str(pos), '.', refBase, altBase, str(qual),
+            filter_str, info_str, 'GT:AD:DP:GQ:PL', sample_str]
+        vcf.print_record(vcf_rec_data)
+
+    vcf.close()
+
+
+if __name__ == '__main__':
+    args = parse_args()
+    main(args)

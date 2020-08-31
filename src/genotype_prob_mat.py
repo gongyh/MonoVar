@@ -28,9 +28,6 @@ SOFTWARE.
 """
 
 import numpy as np
-from Single_Cell_Ftrs_Pos import Single_Cell_Ftrs_Pos
-from alleles_prior import allele_prior
-
 
 class Genotype_Prob_matrix:
 

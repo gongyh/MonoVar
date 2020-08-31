@@ -32,12 +32,13 @@ from nu_genotype_single_cell import Single_cell_genotype_records
 import numpy as np
 
 LOG_POOR_QUAL = 3249
+genotype_dict = {0: '0/0', 1: '0/1', 2: '1/1'}
 
 
 class MP_single_cell_genotype:
 
     def get_info_string(self, read_supported_cell_list, n_cells, nCr_matrix,
-                prior_variant_number, denominator, genotype_dict, cell_count):
+                prior_variant_number, denominator, cell_count):
 
         current_cell_ftr_info = read_supported_cell_list[cell_count]
         cp_read_supported_cell_list = [j for i, j \

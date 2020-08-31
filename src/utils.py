@@ -32,21 +32,13 @@ import re
 import numpy as np
 import pysam
 from scipy import stats
-from base_q_ascii import Ascii_Table
-from alleles_prior import allele_prior
-
-base_q_tbl = Ascii_Table()
+from base_q_ascii import base_q_dict, base_q_int_dict
+from alleles_prior import get_prior_matrix
 
 
 class Utils_Functions:
 
-    def checkReadPresence(self, single_cell_dict):
-        if single_cell_dict.depth == 0:
-            return 0
-        return 1
-
-
-    def Create_nCr_mat(self, max_allele_cnt):
+    def get_nCr_mat(self, max_allele_cnt):
         factorial_list = [np.math.factorial(i) for i in range(max_allele_cnt)]
            
         ncr_mat = np.zeros((max_allele_cnt, max_allele_cnt))
@@ -57,23 +49,11 @@ class Utils_Functions:
         return ncr_mat
 
 
-    def CheckAltAllele(self, single_cell_dict):
-        """ Check whether the given single cell has alternate allele or not
-        """
-        if single_cell_dict.depth - single_cell_dict.refDepth == 0:
-            return 0
-        return 1
-
-
-    def RefCountString(self, read_base):
+    def get_ref_count(self, read_base):
         forward_ref_c = read_base.count('.')
         reverse_ref_c = read_base.count(',')
-        RefCount = forward_ref_c + reverse_ref_c
-        return (forward_ref_c, reverse_ref_c, RefCount)
-
-
-    def refineBase(self, b):
-        return b.replace(' ', '').upper()
+        ref_count = forward_ref_c + reverse_ref_c
+        return forward_ref_c, reverse_ref_c, ref_count
 
 
     def copy_list_but_one(self, i_list, index):
@@ -89,10 +69,8 @@ class Utils_Functions:
         and the new string with patterns removed
         """
         l = [x.group() for x in re.finditer(pattern, string)]
-        len_indel = [int(re.split(r'(\d+)', i)[1])
-                     for i in l]  # Get the lengths of the patterns
-        spans = [i.span() for i in re.finditer(
-            pattern, string)]  # Get the spans
+        len_indel = [int(re.split(r'(\d+)', i)[1]) for i in l]  # Get the lengths of the patterns
+        spans = [i.span() for i in re.finditer(pattern, string)]  # Get the spans
         newspan = []  # Change the spans according to the integer length of the pattern
         for i in range(len(len_indel)):
             new_end = spans[i][0] + 1 + len_indel[i] + len(str(len_indel[i]))
@@ -102,24 +80,25 @@ class Utils_Functions:
         new_string = string
         for i in final_indel_list:
             new_string = new_string.replace(i, '')
-        return (final_indel_list, new_string)
+        return final_indel_list, new_string
 
-    def Alt_count(self, string):
-        cp_string = copy.deepcopy(string)
-        (ins_list, ins_rmvd_str) = self.find_indel(
-            cp_string, '\+[0-9]+[ACGTNacgtn]+')
+
+    def get_alt_count(self, string):
+        ins_list, ins_rmvd_str = self.find_indel(string, '\+[0-9]+[ACGTNacgtn]+')
+        del_list, del_ins_rmvd_str = \
+            self.find_indel(ins_rmvd_str, '-[0-9]+[ACGTNacgtn]+')
         ins_count = len(ins_list)
-        (del_list, del_ins_rmvd_str) = self. find_indel(
-            ins_rmvd_str, '-[0-9]+[ACGTNacgtn]+')
         del_count = len(del_list)
         A_cnt = del_ins_rmvd_str.count('A') + del_ins_rmvd_str.count('a')
         T_cnt = del_ins_rmvd_str.count('T') + del_ins_rmvd_str.count('t')
         G_cnt = del_ins_rmvd_str.count('G') + del_ins_rmvd_str.count('g')
         C_cnt = del_ins_rmvd_str.count('C') + del_ins_rmvd_str.count('c')
         N_cnt = del_ins_rmvd_str.count('N') + del_ins_rmvd_str.count('n')
-        return (del_ins_rmvd_str, ins_count, del_count, A_cnt, T_cnt, G_cnt, C_cnt, N_cnt)
+        return del_ins_rmvd_str, ins_count, del_count, A_cnt, T_cnt, G_cnt, \
+            C_cnt, N_cnt
 
-    def Count_Start_and_End(self, s):
+
+    def get_count_start_and_end(self, s):
         end_counts = s.count('$')
         ns = s.replace('$', '')
         start_counts = 0
@@ -132,91 +111,34 @@ class Utils_Functions:
             else:
                 fs = fs + ns[i]
                 i += 1
-        return (start_counts, end_counts, fs)
+        return start_counts, end_counts, fs
 
-    def Create_base_call_string(self, s, ref):
+
+    def get_base_call_string(self, s, ref):
         """ Removes unwanted characters from s and then replace . and , with ref, 
             finally returns a string that contains all the observed bases
         """
-        l = ['.', ',', 'a', 'A', 'c', 'C', 't', 'T', 'g', 'G', '*']
+        l = {'.': ref, ',': ref, '*': ref, 'a': 'A', 'A': 'A', 'c': 'C', 'C': 'C',
+            't': 'T', 'T': 'T', 'g': 'G', 'G': 'G'}
         sn = ''
         for i in s:
-            if i in l:
-                sn = sn + i
-        snn = ''
-        for i in sn:
-            if i == '.':
-                snn = snn + ref
-            elif i == ',':
-                snn = snn + ref
-            elif i == 'a':
-                snn = snn + 'A'
-            elif i == 'c':
-                snn = snn + 'C'
-            elif i == 't':
-                snn = snn + 'T'
-            elif i == 'g':
-                snn = snn + 'G'
-            elif i == '*':
-                snn = snn + ref
-            else:
-                snn = snn + i
-        return snn
+            try:
+                sn += l[i]
+            except KeyError:
+                pass
+        return sn
 
-    def Get_base_qual_list(self, s):
+
+    def get_base_qual_list(self, qual_str):
         """ Returns the base quality scores as a list """
-        len_s = len(s)
-        base_q_list = len_s * [None]
-        base_q_int_list = len_s * [None]
-        for i in range(len_s):
-            err_p = base_q_tbl.base_q_dict[s[i]]
-            err_int = base_q_tbl.base_q_int_dict[s[i]]
-            base_q_list[i] = err_p
-            base_q_int_list[i] = err_int
-        return (base_q_list, base_q_int_list)
+        len_s = len(qual_str)
+        base_q_list = np.zeros(len_s)
+        base_q_int_list = np.zeros(len_s)
+        for i, qual_base in enumerate(qual_str):
+            base_q_list[i] = base_q_dict[qual_base]
+            base_q_int_list[i] = base_q_int_dict[qual_base]
+        return base_q_list, base_q_int_list
 
-    def find_min_list(self, actual_list, flag_list, last_min_loc, last_min_index):
-        if ((sum(flag_list) == 1) & (actual_list[last_min_index] == last_min_loc + 1)):
-            min_index = last_min_index
-            min_loc = actual_list[last_min_index]
-        else:
-            min_loc = min(actual_list)
-            min_index = actual_list.index(min_loc)
-        return(min_loc, min_index)
-
-    def feature_row(self, rlist):
-        """ Returns the feature row for one cell given the list of input for one cell from pile up file"""
-        stat_dict = {}
-        if (len(rlist) != 0):
-            stat_dict['ref_base'] = self.refineBase(rlist[2])
-            stat_dict['depth'] = rlist[3]
-            stat_dict['refcount'] = self.RefCountString(rlist[4])
-            (del_ins_rmvd_str, ins_count, del_count, A_cnt, T_cnt,
-             G_cnt, C_cnt, N_cnt) = self.Alt_count(rlist[4])
-            stat_dict['ins_count'] = ins_count
-            stat_dict['del_count'] = del_count
-            stat_dict['A_count'] = A_cnt
-            stat_dict['T_count'] = T_cnt
-            stat_dict['G_count'] = G_cnt
-            stat_dict['C_count'] = C_cnt
-            stat_dict['N_count'] = N_cnt
-            stat_dict['base_calls'] = self.Create_base_call_string(
-                del_ins_rmvd_str, rlist[2])
-            stat_dict['base_qual_list'] = self.Get_base_qual_list(rlist[5])
-        else:
-            stat_dict['depth'] = 0
-            stat_dict['refcount'] = 0
-            stat_dict['ref_base'] = ''
-            stat_dict['ins_count'] = 0
-            stat_dict['del_count'] = 0
-            stat_dict['A_count'] = 0
-            stat_dict['T_count'] = 0
-            stat_dict['G_count'] = 0
-            stat_dict['C_count'] = 0
-            stat_dict['N_count'] = 0
-            stat_dict['base_calls'] = 'NULL'
-            stat_dict['base_qual_list'] = []
-        return stat_dict
 
     def calc_strand_bias(self, cell_ftr_pos_list, Alt_count):
         f_ref_count = 0
@@ -294,16 +216,17 @@ class Utils_Functions:
         return max_prob_ratio
 
 
-    def Get_prior_allele_mat(self, read_smpl_count, alt_smpl_count,
+    def get_prior_allele_mat(self, read_smpl_count, alt_smpl_count,
                 cell_no_threshold, total_depth, Alt_freq, pe):
-        if ((read_smpl_count > cell_no_threshold - 1) & (alt_smpl_count == 1)):
-            prior_allele_mat = allele_prior(0.2)
-        elif ((read_smpl_count > cell_no_threshold) & (alt_smpl_count == 2) \
-                & (total_depth > 30) & (Alt_freq < 0.1)):
-            prior_allele_mat = allele_prior(0.1)
+        if read_smpl_count > cell_no_threshold - 1 and alt_smpl_count == 1:
+            prior_mat = get_prior_matrix(0.2)
+        elif read_smpl_count > cell_no_threshold and alt_smpl_count == 2 \
+                    and total_depth > 30 and Alt_freq < 0.1:
+            prior_mat = get_prior_matrix(0.1)
         else:
-            prior_allele_mat = allele_prior(pe)
-        return prior_allele_mat
+            prior_mat = get_prior_matrix(pe)
+        return prior_mat
+
 
     def calc_chr_count(self, barcode):
         AC = 0
@@ -316,6 +239,7 @@ class Utils_Functions:
                 AC += c
         AF = float(AC) / AN
         return AC, AF, AN
+
 
     def calc_base_q_rank_sum(self, read_supported_cell_list):
         ref_list = []
@@ -344,7 +268,7 @@ class Utils_Functions:
         return qual_depth
 
 
-    def Get_BAM_RG(self, bam_file):
+    def get_BAM_RG(self, bam_file):
         rows = pysam.view("-H", bam_file)
         for r in rows:
             if r.startswith('@RG'):

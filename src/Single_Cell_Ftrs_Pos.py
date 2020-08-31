@@ -27,15 +27,11 @@ SOFTWARE.
 
 """
 
-from alleles_prior import allele_prior
-from utils import Utils_Functions
-import math
-import copy
 import numpy as np
+from utils import Utils_Functions
 
 U = Utils_Functions()
 G_MAP ={'CA': 'AC', 'GA': 'AG', 'TA': 'AT', 'GC': 'CG', 'TC': 'CT', 'TG': 'GT'}
-
 
 class Single_Cell_Ftrs_Pos:
 
@@ -50,8 +46,9 @@ class Single_Cell_Ftrs_Pos:
             self.depth = int(current_pos_info_list[0])
             self.primary_bases = current_pos_info_list[1]
             self.base_q = current_pos_info_list[2]
-            (self.forward_ref_count, self.reverse_ref_count,
-             self.refDepth) = U.RefCountString(self.primary_bases)
+            self.forward_ref_count, self.reverse_ref_count, self.refDepth = \
+                U.get_ref_count(self.primary_bases)
+
 
     # Remove the insertions and deletions from the primary_bases and also
     # count the number of insertions and deletions
@@ -63,7 +60,7 @@ class Single_Cell_Ftrs_Pos:
             self.del_list = []
             self.ins_del_rmvd_bases = self.primary_bases
         else:
-            cp_primary_bases = copy.deepcopy(self.primary_bases)
+            cp_primary_bases = self.primary_bases
             self.ins_list, ins_rmvd_bases = \
                 U.find_indel(cp_primary_bases, '\+[0-9]+[ACGTNacgtn]+')
             self.ins_count = len(self.ins_list)
@@ -75,16 +72,16 @@ class Single_Cell_Ftrs_Pos:
     # Function that calculates the base calling errors from base qual scores
     def Get_Base_Qual_Vals(self):
         self.base_qual_val_list, self.base_qual_int_val_list = \
-            U.Get_base_qual_list(self.base_q)
+            U.get_base_qual_list(self.base_q)
 
 
     # After removal of insertions and deletions we create the base call string
     # to be used by the model
     def Get_Base_Calls(self, ref):
         self.start_read_counts, self.end_read_counts, self.start_end_ins_del_rmvd_bases = \
-            U.Count_Start_and_End(self.ins_del_rmvd_bases)
-        self.final_bases = U.Create_base_call_string(
-            self.start_end_ins_del_rmvd_bases, ref)
+            U.get_count_start_and_end(self.ins_del_rmvd_bases)
+        self.final_bases = \
+            U.get_base_call_string(self.start_end_ins_del_rmvd_bases, ref)
 
 
     def Get_base_call_string_nd_quals(self, ref):
@@ -137,7 +134,7 @@ class Single_Cell_Ftrs_Pos:
             curr_err = self.base_qual_val_list[i]
             if curr_err > 0.5: 
                 continue
-            prob_i = self.prior_allele_mat.getValue(curr_base_key)
+            prob_i = self.prior_allele_mat[curr_base_key]
             # Eq. 1, Eq. 2, Eq. 4
             prob = curr_err * (1 - prob_i) / 3 + (1 - curr_err) * prob_i
             val[i - start] = prob
