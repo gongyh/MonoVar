@@ -30,8 +30,11 @@ SOFTWARE.
 from genotype_prob_mat import Genotype_Prob_matrix
 from nu_genotype_single_cell import Single_cell_genotype_records
 import numpy as np
+np.seterr(divide='ignore')
 
-LOG_POOR_QUAL = 3249
+POOR_QUAL = 1e-100
+PHRED_POOR_QUAL = -10 * np.log10(POOR_QUAL)
+MAX_GQ = 99
 genotype_dict = {0: '0/0', 1: '0/1', 2: '1/1'}
 
 
@@ -68,7 +71,7 @@ class MP_single_cell_genotype:
                 g_ind = 2
             else:
                 g_ind = 1
-            norm_p_list = np.zeros(3)
+            norm_p_list = np.full(3, POOR_QUAL)
             norm_p_list[g_ind] = 1
         else:
             g_ind = p_list.argmax()
@@ -76,10 +79,9 @@ class MP_single_cell_genotype:
        
         # Determining PL
         PL = np.round(-10 * np.log10(norm_p_list))
-        PL = np.where(np.isinf(PL), LOG_POOR_QUAL, PL)
-        PL = PL - PL.min()
+        PL = np.where(np.isinf(PL), PHRED_POOR_QUAL, PL)
         # Determining GQ
-        GQ = np.sort(PL)[1]
+        GQ = min(MAX_GQ, np.round(-10 * np.log10(1 - norm_p_list[g_ind])))
 
         final_genotype = genotype_dict[g_ind]
         info = '{gt}:{ad_r},{ad_a}:{dp}:{gq:.0f}:{pl0:.0f},{pl1:.0f},{pl2:.0f}' \
