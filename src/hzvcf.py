@@ -30,7 +30,7 @@ SOFTWARE.
 import time
 
 VCF_meta_template = """##fileformat=VCFv4.1
-##fileDate={_d.time.tm_year}-{_d.time.tm_mon}-{_d.time.tm_mday}
+##fileDate={_d.time.tm_year}:{_d.time.tm_mon}:{_d.time.tm_mday}-{_d.time.tm_hour}:{_d.time.tm_min}:{_d.time.tm_sec}
 ##source=MonoVar_NB
 {_d.FILTER_META}
 {_d.INFO_META}
@@ -104,7 +104,7 @@ class VCFDocument():
 
     def set_reference(self, ref_file):
         self.ref_file = ref_file
-        self.REF_META = '##reference=file:{}'.format(ref_file)
+        self.REF_META = '##reference={}'.format(ref_file)
 
 
     def print_header(self):
