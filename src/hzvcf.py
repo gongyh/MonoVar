@@ -104,7 +104,7 @@ class VCFDocument():
 
     def set_reference(self, ref_file):
         self.ref_file = ref_file
-        self.REF_META = '##reference={}'.format(ref_file)
+        self.REF_META = '##reference=file:{}'.format(ref_file)
 
 
     def print_header(self):
