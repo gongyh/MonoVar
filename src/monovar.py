@@ -39,8 +39,8 @@ import multiprocessing as mp
 import numpy as np
 from functools import partial
 
-from utils import Utils_Functions
-from mp_genotype import MP_single_cell_genotype
+import utils as U
+import mp_genotype as M
 from Single_Cell_Ftrs_Pos import Single_Cell_Ftrs_Pos
 from calc_variant_prob import Calc_Var_Prob
 from hzvcf import VCFDocument
@@ -55,16 +55,13 @@ def _pickle_method(m):
 
 copy_reg.pickle(types.MethodType, _pickle_method)
 
-U = Utils_Functions()
-M = MP_single_cell_genotype()
-
 # Default values
 Base_dict = {0: 'A', 1: 'T', 2: 'G', 3: 'C'}
 
 def parse_args():
     parser = argparse.ArgumentParser(
         prog='MonoVar',
-        usage='samtools mpileup --fasta-ref --bam-list <BAMS> [options] ' \
+        usage='samtools mpileup --fasta-ref <REF> --bam-list <BAMS> [options] ' \
             '| monovar.py -b <BAMS> -f <REF> -o <OUTPUT> [options]',
         description='*** SNV calling on single-cell DNA data. ***'
     )
@@ -147,6 +144,9 @@ def main(args):
         pos = int(row[1])
         refBase = row[2].strip().upper()
         
+        if refBase not in ['A', 'T', 'G', 'C']:
+            continue
+        
         total_depth = 0
         total_ref_depth = 0
         for i in range(1, n_cells + 1):
@@ -162,7 +162,7 @@ def main(args):
         alt_freq = float(alt_count) / total_depth
 
         # No reads supporting alternate allele, so no operations needed
-        if alt_freq <= 0.01 or refBase not in ['A', 'T', 'G', 'C']:
+        if alt_freq <= 0.01:
             continue
         # Cases that are to be prefiltered
         if total_depth > 30 and (alt_count <= 2 or alt_freq <= 0.001):
@@ -198,7 +198,6 @@ def main(args):
         read_supported_n_cells = len(read_supported_cell_list)
         if read_supported_n_cells == 0:
             continue
-
         # Number of cells having read support
         read_smpl_count = read_flag_row.sum()
         # Number of cells having alternate allele support

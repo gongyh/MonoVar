@@ -123,6 +123,5 @@ class VCFDocument():
         self.outf_rec.close()
         
 
-
 if __name__ == '__main__':
     print('Here be dragons...')

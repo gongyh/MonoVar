@@ -28,9 +28,8 @@ SOFTWARE.
 """
 
 import numpy as np
-from utils import Utils_Functions
+import utils as U
 
-U = Utils_Functions()
 G_MAP ={'CA': 'AC', 'GA': 'AG', 'TA': 'AT', 'GC': 'CG', 'TC': 'CT', 'TG': 'GT'}
 
 class Single_Cell_Ftrs_Pos:
@@ -48,6 +47,16 @@ class Single_Cell_Ftrs_Pos:
             self.base_q = current_pos_info_list[2]
             self.forward_ref_count, self.reverse_ref_count, self.refDepth = \
                 U.get_ref_count(self.primary_bases)
+
+
+    def __str__(self):
+        try:
+            out_str = 'refDepth={},depth={},refBase={}\nprimary_bases={}\nbase_q={}\n' \
+                .format( self.refDepth, self.depth, self.refBase, 
+                    self.primary_bases, self.base_q)
+        except AttributeError:
+            out_str = 'depth={},refDepth={}'.format(self.depth, self.refDepth)
+        return out_str
 
 
     # Remove the insertions and deletions from the primary_bases and also
@@ -88,7 +97,7 @@ class Single_Cell_Ftrs_Pos:
         self.get_ins_del_rmvd_bases()
         self.get_base_qual_vals()
         self.get_base_calls(ref)
-        return 0
+
 
     # Function that calculates the numbers of alternate alleles in the
     # ins_del_rmvd_bases
