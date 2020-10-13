@@ -45,6 +45,7 @@ from Single_Cell_Ftrs_Pos import Single_Cell_Ftrs_Pos
 from calc_variant_prob import Calc_Var_Prob
 from hzvcf import VCFDocument
 
+
 # Required for using multiprocessing
 def _pickle_method(m):
     if m.im_self is None:
@@ -123,16 +124,14 @@ def main(args):
     read_flag_row = np.zeros(n_cells, dtype=bool)
     alt_allele_flag_row = np.zeros(n_cells, dtype=bool)
 
+
+    contigs = set([])
     # Initialize the pool of multiprocessing
     pool = mp.Pool(processes=args.cpus)
 
     # Open VCF file and print header
-    f_vcf = open(args.output, 'w')
-    vcf = VCFDocument(f_vcf)
-    vcf.set_files(bam_id_list)
-    vcf.set_reference(args.ref_file)
-    vcf.print_header()
-
+    vcf = VCFDocument(args.output, bam_id_list, args.ref_file)
+    
     if sys.stdin.isatty():
         with open(args.pileup, 'r') as f:
             lines = f.read().strip().split('\n')
@@ -176,11 +175,11 @@ def main(args):
         total_alt_allele_count = np.zeros(4, dtype=int)
 
         # Traverse through all the sngl_cell_ftr_obj and if has read support
-        # further calculate the other quantities
+        #   further calculate the other quantities
         for j, sngl_cell_ftr_obj in enumerate(all_single_cell_ftrs_list):
             read_flag = sngl_cell_ftr_obj.depth >= args.min_read_depth
             if read_flag:
-                sngl_cell_ftr_obj.Get_base_call_string_nd_quals(refBase)
+                sngl_cell_ftr_obj.get_base_call_string_nd_quals(refBase)
                 alt_allele_flag = \
                     sngl_cell_ftr_obj.depth - sngl_cell_ftr_obj.refDepth != 0
                 if alt_allele_flag:
@@ -284,10 +283,14 @@ def main(args):
 
         vcf_rec_data = [contig, str(pos), '.', refBase, altBase, str(qual),
             filter_str, info_str, 'GT:AD:DP:GQ:PL', sample_str]
-        vcf.print_record(vcf_rec_data)
 
-    vcf.close()
+        vcf.append_record(vcf_rec_data)
+        contigs.add(contig)
 
+    vcf.close_records()
+    vcf.add_contigs(contigs)
+    vcf.add_header()
+    
 
 if __name__ == '__main__':
     args = parse_args()

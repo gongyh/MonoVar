@@ -52,7 +52,7 @@ class Single_Cell_Ftrs_Pos:
 
     # Remove the insertions and deletions from the primary_bases and also
     # count the number of insertions and deletions
-    def Get_Ins_Del_rmvd_bases(self):
+    def get_ins_del_rmvd_bases(self):
         if self.primary_bases.count('+') + self.primary_bases.count('-') == 0:
             self.ins_count = 0
             self.del_count = 0
@@ -70,24 +70,24 @@ class Single_Cell_Ftrs_Pos:
 
 
     # Function that calculates the base calling errors from base qual scores
-    def Get_Base_Qual_Vals(self):
+    def get_base_qual_vals(self):
         self.base_qual_val_list, self.base_qual_int_val_list = \
             U.get_base_qual_list(self.base_q)
 
 
     # After removal of insertions and deletions we create the base call string
     # to be used by the model
-    def Get_Base_Calls(self, ref):
+    def get_base_calls(self, ref):
         self.start_read_counts, self.end_read_counts, self.start_end_ins_del_rmvd_bases = \
             U.get_count_start_and_end(self.ins_del_rmvd_bases)
         self.final_bases = \
             U.get_base_call_string(self.start_end_ins_del_rmvd_bases, ref)
 
 
-    def Get_base_call_string_nd_quals(self, ref):
-        self.Get_Ins_Del_rmvd_bases()
-        self.Get_Base_Qual_Vals()
-        self.Get_Base_Calls(ref)
+    def get_base_call_string_nd_quals(self, ref):
+        self.get_ins_del_rmvd_bases()
+        self.get_base_qual_vals()
+        self.get_base_calls(ref)
         return 0
 
     # Function that calculates the numbers of alternate alleles in the

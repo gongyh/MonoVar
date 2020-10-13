@@ -28,24 +28,30 @@ SOFTWARE.
 """
 
 import time
+import os
 
-VCF_meta_template = """##fileformat=VCFv4.1
+VCF_META_TEMPLATE = """##fileformat=VCFv4.1
 ##fileDate={_d.time.tm_year}:{_d.time.tm_mon}:{_d.time.tm_mday}-{_d.time.tm_hour}:{_d.time.tm_min}:{_d.time.tm_sec}
 ##source=MonoVar_NB
-{_d.FILTER_META}
-{_d.INFO_META}
-{_d.FORMAT_META}
-{_d.REF_META}
-#CHROM\tPOS\tID\tREF\tALT\tQUAL\tFILTER\tINFO\tFORMAT\t{_d.FILES_META}
+{_d.filter_meta}
+{_d.info_meta}
+{_d.format_meta}
+{_d.ref_meta}
+{_d.contig_meta}
+#CHROM\tPOS\tID\tREF\tALT\tQUAL\tFILTER\tINFO\tFORMAT\t{_d.files_meta}
 """
 
 class VCFDocument():
 
-    def __init__(self, outf):
+    def __init__(self, out_file, bam_id_list, ref_file):
         self.time = time.localtime()
-        self.outf = outf
+        self.outf = out_file
+        self.outf_rec = open('{}.rec'.format(out_file), 'w')
 
-        self.info_fields = [
+        self.files_meta = '\t'.join(bam_id_list)
+        self.ref_meta = '##reference=file:{}'.format(ref_file)
+        
+        info_fields = [
             ('AC', 'A', 'Integer',
                 'Allele count in genotypes, for each ALT allele, in the same order as listed'),
             ('AF', 'A', 'Float',
@@ -65,19 +71,19 @@ class VCFDocument():
             ('PSARR', '1', 'Float',
                 'Ratio of per-sample Alt allele supporting reads to Ref allele supporting reads')
         ]
-        self.INFO_META = '\n'.join([
+        self.info_meta = '\n'.join([
             '##INFO=<ID={},Number={},Type={},Description="{}">'.format(*i) \
-                for i in self.info_fields])
+                for i in info_fields])
 
-        self.filter_fields = [
+        filter_fields = [
             ('LowQual', 'Low quality'),
             ('NoConsensus', 'Only 1 sample contains called SNV')
         ]
-        self.FILTER_META = '\n'.join([
+        self.filter_meta = '\n'.join([
             '##FILTER=<ID={},Description="{}">'.format(*i) \
-                for i in self.filter_fields])
+                for i in filter_fields])
 
-        self.format_fields = [
+        format_fields = [
             ('AD', '.', 'Integer', 
                 'Allelic depths for the ref and alt alleles in the order listed'),
             ('DP', '1', 'Integer',
@@ -87,37 +93,35 @@ class VCFDocument():
             ('PL', 'G', 'Integer',
                 'Normalized, Phred-scaled likelihoods for genotypes as defined in the VCF specification')
         ]
-        self.FORMAT_META = '\n'.join([
+        self.format_meta = '\n'.join([
             '##FORMAT=<ID={},Number={},Type={},Description="{}">'.format(*i) \
-                for i in self.format_fields])
-        
-        self.ref_file = None
-        self.REF_META = ''
-        self.files_list = []
-        self.FILES_META = ''
+                for i in format_fields])
+
+        self.contig_meta = '##contig=<ID=-1,eta=-1>'
 
 
-    def set_files(self, bam_id_list):
-        self.files_list.extend(bam_id_list)
-        self.FILES_META = '\t'.join(self.files_list)
-        
-
-    def set_reference(self, ref_file):
-        self.ref_file = ref_file
-        self.REF_META = '##reference=file:{}'.format(ref_file)
-
-
-    def print_header(self):
-        self.outf.write(VCF_meta_template.format(_d=self))
-
-
-    def print_record(self, rec_data):
+    def append_record(self, rec_data):
         rec_str = '\t'.join(rec_data) + '\n'
-        self.outf.write(rec_str)
+        self.outf_rec.write(rec_str)
 
 
-    def close(self):
-        self.outf.close()
+    def add_contigs(self, contigs):
+        self.contig_meta = '\n'.join(['##contig=<ID={},eta=-1>'.format(i) \
+            for i in contigs])
+
+
+    def add_header(self):
+        with open(self.outf, 'w') as f_out:
+            f_out.write(VCF_META_TEMPLATE.format(_d=self))
+            with open(self.outf_rec.name, 'r') as f_rec:
+                f_out.write(f_rec.read())
+
+        os.remove(self.outf_rec.name)
+
+
+    def close_records(self):
+        self.outf_rec.close()
+        
 
 
 if __name__ == '__main__':
