@@ -28,6 +28,7 @@ SOFTWARE.
 
 """
 
+import os
 import sys
 import argparse
 if sys.version_info.major == 3:
@@ -69,16 +70,19 @@ def parse_args():
 
     parser.add_argument('-i', '--pileup', type=str,
         help='Pileup file. If not given, input is read from stdin.')
+    parser.add_argument('-s', '--samples', type=str, default='',
+        help='File containing sample names, 1 sample per line. Required if no '
+            'bam files are provided.')
+    parser.add_argument('-b', '--bam_file_list', type=str, default='',
+        help='List of Bam files in a text format.')
+    parser.add_argument('-o', '--output', type=str, required=True,
+        help='Output file (should end on ".vcf").')
+    parser.add_argument('-f', '--ref_file', type=str, default='',
+        help='Reference genome file in .fa format.')
     parser.add_argument('-p', '--pe', type=float, default=0.002,
         help='Probability of an error. Default = 0.002.')
     parser.add_argument('-a', '--pad', type=float, default=0.2,
         help='Probability of an allelic dropout. Default = 0.2.')
-    parser.add_argument('-f', '--ref_file', type=str, required=True,
-        help='Reference genome file in .fa format.')
-    parser.add_argument('-b', '--bam_file_list', type=str, required=True,
-        help='List of Bam files in a text format.')
-    parser.add_argument('-o', '--output', type=str, required=True,
-        help='Output file (should end on ".vcf").')
     parser.add_argument('-t', '--threshold', type=float, default=0.05,
         help='Threshold to use for calling variant. Default = 0.05.')
     parser.add_argument('-c', '--CF_flag', type=int, choices=[0, 1], default=1,
@@ -101,10 +105,19 @@ def parse_args():
 
 
 def main(args):
-    # Obtain the RG IDs from the bam files
-    with open(args.bam_file_list, 'r') as f:
-        f_bam_list = f.read().strip().split('\n')
-    bam_id_list = [U.get_BAM_RG(i.strip()) for i in f_bam_list]
+    if args.bam_file_list:
+        # Obtain the RG IDs from the bam files
+        with open(args.bam_file_list, 'r') as f:
+            f_bam_list = f.read().strip().split('\n')
+        bam_id_list = [U.get_BAM_RG(i.strip()) for i in f_bam_list]
+    else:
+        if not os.path.exists(args.samples):
+            raise IOError('If no bam file is provided, ' \
+                'a sample name file is required! (-s|--sample <FILE>)')
+
+        with open(args.samples, 'r') as f:
+            bam_id_list = f.read().strip().split('\n')
+        
 
     n_cells = len(bam_id_list)
     n_cells_threshold = n_cells / 2

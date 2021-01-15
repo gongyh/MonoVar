@@ -49,7 +49,10 @@ class VCFDocument():
         self.outf_rec = open('{}.rec'.format(out_file), 'w')
 
         self.files_meta = '\t'.join(bam_id_list)
-        self.ref_meta = '##reference=file:{}'.format(ref_file)
+        if ref_file:
+            self.ref_meta = '##reference=file:{}'.format(ref_file)
+        else:
+            self.ref_meta = '##reference=?'
         
         info_fields = [
             ('AC', 'A', 'Integer',
