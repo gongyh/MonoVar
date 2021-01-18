@@ -69,7 +69,7 @@ def parse_args():
     )
     parser.add_argument('--version', action='version', version='1.0.0_NB')
 
-    parser.add_argument('-i', '--pileup', type=str,
+    parser.add_argument('-i', '--pileup', type=str, default='',
         help='Pileup file. If not given, input is read from stdin.')
     parser.add_argument('-s', '--samples', type=str, default='',
         help='File containing sample names, 1 sample per line. Required if no '
@@ -113,8 +113,8 @@ def main(args):
         bam_id_list = [U.get_BAM_RG(i.strip()) for i in f_bam_list]
     else:
         if not os.path.exists(args.samples):
-            raise IOError('If no bam file is provided, ' \
-                'a sample name file is required! (-s|--sample <FILE>)')
+            raise IOError('If input is mpileup file, a sample name file is '
+                'required! (-s|--sample <FILE>)')
 
         with open(args.samples, 'r') as f:
             bam_id_list = f.read().strip().split('\n')
@@ -143,7 +143,7 @@ def main(args):
     # Open VCF file and print header
     vcf = VCFDocument(args.output, bam_id_list, args.ref_file)
     
-    if sys.stdin.isatty():
+    if args.pileup:
         with open(args.pileup, 'r') as f:
             lines = f.read().strip().split('\n')
         in_type = 'mpileup file'
