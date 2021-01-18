@@ -149,6 +149,10 @@ def main(args):
     else:
         lines = sys.stdin
 
+    if args.debug:
+        print('\tStart iterating over input bam/pileup with {} cells' \
+            .format(len(bam_id_list)))
+
     for line in lines:
         row = line.strip().split('\t')
         if line == '':
@@ -300,6 +304,9 @@ def main(args):
         vcf.append_record(vcf_rec_data)
         contigs.add(contig)
 
+    if args.debug:
+        print('\tCreating final vcf file {}'.format(args.output))
+
     vcf.close_records()
     vcf.add_contigs(contigs)
     vcf.add_header()
@@ -309,4 +316,4 @@ if __name__ == '__main__':
     args = parse_args()
     print('Start Monovar_NB: {:%Y%m%d_%H:%M:%S}'.format(datetime.now()))
     main(args)
-    print('Stop Monovar_NB:  {:%Y%m%d_%H:%M:%S}'.format(datetime.now()))
+    print('Stop  Monovar_NB: {:%Y%m%d_%H:%M:%S}'.format(datetime.now()))
