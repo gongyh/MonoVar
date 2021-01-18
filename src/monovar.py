@@ -146,12 +146,14 @@ def main(args):
     if sys.stdin.isatty():
         with open(args.pileup, 'r') as f:
             lines = f.read().strip().split('\n')
+        in_type = 'mpileup file'
     else:
         lines = sys.stdin
+        in_type = 'bam stdin'
 
     if args.debug:
-        print('\tStart iterating over input bam/pileup with {} cells' \
-            .format(len(bam_id_list)))
+        print('\tStart iterating over {} with {} cells' \
+            .format(in_type, len(bam_id_list)))
 
     for line in lines:
         row = line.strip().split('\t')
