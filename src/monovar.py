@@ -39,6 +39,7 @@ import types
 import multiprocessing as mp
 import numpy as np
 from functools import partial
+from datetime import datetime
 
 import utils as U
 import mp_genotype as M
@@ -157,7 +158,7 @@ def main(args):
         pos = int(row[1])
         refBase = row[2].strip().upper()
         
-        if refBase not in ['A', 'T', 'G', 'C']:
+        if refBase not in ['A', 'C', 'G', 'T']:
             continue
         
         total_depth = 0
@@ -306,4 +307,6 @@ def main(args):
 
 if __name__ == '__main__':
     args = parse_args()
+    print('Start Monovar_NB: {:%Y%m%d_%H:%M:%S}'.format(datetime.now()))
     main(args)
+    print('Stop Monovar_NB:  {:%Y%m%d_%H:%M:%S}'.format(datetime.now()))

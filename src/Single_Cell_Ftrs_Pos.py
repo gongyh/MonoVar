@@ -51,8 +51,9 @@ class Single_Cell_Ftrs_Pos:
 
     def __str__(self):
         try:
-            out_str = 'refDepth={},depth={},refBase={}\nprimary_bases={}\nbase_q={}\n' \
-                .format( self.refDepth, self.depth, self.refBase, 
+            out_str = 'refBase={},depth={},refDepth={}\n' \
+                    'primary_bases=\t{}\nbase_q=\t\t{}\n' \
+                .format(self.refBase, self.depth, self.refDepth,
                     self.primary_bases, self.base_q)
         except AttributeError:
             out_str = 'depth={},refDepth={}'.format(self.depth, self.refDepth)
