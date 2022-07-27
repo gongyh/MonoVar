@@ -72,10 +72,10 @@ class Single_Cell_Ftrs_Pos:
         else:
             cp_primary_bases = self.primary_bases
             self.ins_list, ins_rmvd_bases = \
-                U.find_indel(cp_primary_bases, '\+[0-9]+[ACGTNacgtn]+')
+                U.find_indel(cp_primary_bases, '\+[0-9]+[ACGTNacgtnRYMKSWHBVDrymkswhbvd]+')
             self.ins_count = len(self.ins_list)
             self.del_list, self.ins_del_rmvd_bases = \
-                U.find_indel(ins_rmvd_bases, '-[0-9]+[ACGTNacgtn]+')
+                U.find_indel(ins_rmvd_bases, '-[0-9]+[ACGTNacgtnRYMKSWHBVDrymkswhbvd]+')
             self.del_count = len(self.del_list)
 
 
