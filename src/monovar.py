@@ -29,6 +29,7 @@ SOFTWARE.
 """
 
 import os
+from pickle import TRUE
 import sys
 import argparse
 if sys.version_info.major == 3:
@@ -46,7 +47,6 @@ import mp_genotype as M
 from Single_Cell_Ftrs_Pos import Single_Cell_Ftrs_Pos
 from calc_variant_prob import Calc_Var_Prob
 from hzvcf import VCFDocument
-
 
 # Required for using multiprocessing
 def _pickle_method(m):
@@ -163,13 +163,25 @@ def main(args):
         contig = row[0]
         pos = int(row[1])
         refBase = row[2].strip().upper()
+        original_refBase = refBase
         
-        if refBase not in ['A', 'C', 'G', 'T']:
+        if refBase not in ['A', 'C', 'G', 'T', 'R', 'Y', 'M', 'K', 'S', 'W']:
             continue
-        
+
         total_depth = 0
         total_ref_depth = 0
         for i in range(1, n_cells + 1):
+            if original_refBase in ['R', 'Y', 'M', 'K', 'S', 'W']:
+                if int(row[3*i]) != 0:
+                    total_bases = row[3*i + 1]
+                    total_ins_del_rmvd_bases = U.ins_del_rmvd_original_bases(total_bases)
+                    total_start_and_end_bases = U.get_start_and_end(total_ins_del_rmvd_bases)
+                    total_count = U.get_base_count(total_start_and_end_bases)
+                    total_count_descend_index = total_count.argsort()[::-1]
+                    refBase = U.alt_deg_ref(original_refBase, total_count_descend_index)
+                else:
+                    refBase = original_refBase
+
             curr_cell_pos_ftrs = Single_Cell_Ftrs_Pos(refBase, row[3*i: 3*i + 3])
             total_depth += curr_cell_pos_ftrs.depth
             total_ref_depth += curr_cell_pos_ftrs.refDepth
@@ -199,13 +211,26 @@ def main(args):
         for j, sngl_cell_ftr_obj in enumerate(all_single_cell_ftrs_list):
             read_flag = sngl_cell_ftr_obj.depth >= args.min_read_depth
             if read_flag:
-                sngl_cell_ftr_obj.get_base_call_string_nd_quals(refBase)
-                alt_allele_flag = \
-                    sngl_cell_ftr_obj.depth - sngl_cell_ftr_obj.refDepth != 0
+                sngl_cell_ftr_obj.get_base_call_string_nd_quals()
+                if original_refBase in ['R', 'Y', 'M', 'K', 'S', 'W']:
+                    total_alt_allele_judgement = np.zeros(4, dtype=int)
+                    total_alt_allele_judgement += sngl_cell_ftr_obj \
+                        .get_deg_alt_allele_count(original_refBase)
+                    if np.all(total_alt_allele_judgement == 0):
+                        alt_allele_flag = False
+                    else:
+                        alt_allele_flag = True
+                else:
+                    alt_allele_flag = \
+                        sngl_cell_ftr_obj.depth - sngl_cell_ftr_obj.refDepth != 0
                 if alt_allele_flag:
                     # Update the list of total_alt_allele_count
-                    total_alt_allele_count += sngl_cell_ftr_obj \
-                        .get_Alt_Allele_Count()
+                    if original_refBase in ['R', 'Y', 'M', 'K', 'S', 'W']:
+                        total_alt_allele_count += sngl_cell_ftr_obj \
+                            .get_deg_alt_allele_count(original_refBase)
+                    else:
+                        total_alt_allele_count += sngl_cell_ftr_obj \
+                                .get_Alt_Allele_Count()
                 # Populate the list of read supported cells
                 read_supported_cell_list.append(sngl_cell_ftr_obj)
             else:
@@ -227,6 +252,7 @@ def main(args):
         # Get the altBase
         if alt_count == 0:
             continue
+
         altBase = Base_dict[total_alt_allele_count.argmax()]
 
         # Calculate prior_allele_mat
@@ -237,7 +263,7 @@ def main(args):
         prior_var_no = prior_variant_dict[read_supported_n_cells]
 
         for cell in read_supported_cell_list:
-            cell.store_addl_info(refBase, altBase, alt_freq, prior_allele_mat)
+            cell.store_addl_info(altBase, alt_freq, prior_allele_mat)
 
         # Obtain the value of probability of SNV
         var_prob_obj = Calc_Var_Prob(read_supported_cell_list)
@@ -300,7 +326,7 @@ def main(args):
         else:
             filter_str = '.'
 
-        vcf_rec_data = [contig, str(pos), '.', refBase, altBase, str(qual),
+        vcf_rec_data = [contig, str(pos), '.', original_refBase, altBase, str(qual),
             filter_str, info_str, 'GT:AD:DP:GQ:PL', sample_str]
 
         vcf.append_record(vcf_rec_data)

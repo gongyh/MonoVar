@@ -27,14 +27,18 @@ SOFTWARE.
 
 """
 
+from asyncore import file_dispatcher
 import copy
+from curses.ascii import alt
 import re
 import numpy as np
 import pysam
 from scipy import stats
 from base_q_ascii import base_q_dict, base_q_int_dict
 from alleles_prior import get_prior_matrix
+import random
 
+Base_dict = {0: 'A', 1: 'T', 2: 'G', 3: 'C'}
 
 def get_nCr_mat(max_allele_cnt):
     factorial_list = [np.math.factorial(i) for i in range(max_allele_cnt)]
@@ -297,3 +301,82 @@ def consensus_filter(barcode):
         return True
     else:
         return False
+
+
+def ins_del_rmvd_original_bases(original_bases):
+    if original_bases.count('+') + original_bases.count('-') == 0:
+        ins_del_rmvd_bases = original_bases
+    else:
+        ins_list = []
+        del_list = []
+        cp_original_bases = original_bases
+        ins_list, ins_rmvd_bases = \
+            find_indel(cp_original_bases, '\+[0-9]+[ACGTNRYMKSWBVDHZacgtnrymkswbvdhz]+')
+        del_list, ins_del_rmvd_bases = \
+            find_indel(ins_rmvd_bases, '-[0-9]+[ACGTNRYMKSWBVDHZacgtnrymkswbvdhz]+')
+    return ins_del_rmvd_bases
+
+
+def get_start_and_end(s):
+    ns = s.replace('$', '')
+    i = 0
+    fs = ''
+    while (i < len(ns)):
+        if ns[i] == '^':
+            i += 2
+        else:
+            fs = fs + ns[i]
+            i += 1
+    return fs
+
+
+def get_base_count(final_bases):
+    A_cnt = final_bases.count('A') \
+        + final_bases.count('a')
+    T_cnt = final_bases.count('T') \
+        + final_bases.count('t')
+    G_cnt = final_bases.count('G') \
+        + final_bases.count('g')
+    C_cnt = final_bases.count('C') \
+        + final_bases.count('c')
+    return np.array([A_cnt, T_cnt, G_cnt, C_cnt], dtype=int)
+
+
+def alt_deg_ref(refBase, total_count_descend_index):
+    if refBase == 'R':
+        for i in range(4):
+            if total_count_descend_index[i] == 0 or total_count_descend_index[i] == 2:
+                ref_alt_index = total_count_descend_index[i]
+                break
+        ref_alt = Base_dict[ref_alt_index]
+    elif refBase == 'Y':
+        for i in range(4):
+            if total_count_descend_index[i] == 1 or total_count_descend_index[i] == 3:
+                ref_alt_index = total_count_descend_index[i]
+                break
+        ref_alt = Base_dict[ref_alt_index]
+    elif refBase == 'M':
+        for i in range(4):
+            if total_count_descend_index[i] == 0 or total_count_descend_index[i] == 3:
+                ref_alt_index = total_count_descend_index[i]
+                break
+        ref_alt = Base_dict[ref_alt_index]
+    elif refBase == 'K':
+        for i in range(4):
+            if total_count_descend_index[i] == 1 or total_count_descend_index[i] == 2:
+                ref_alt_index = total_count_descend_index[i]
+                break
+        ref_alt = Base_dict[ref_alt_index]
+    elif refBase == 'S':
+        for i in range(4):
+            if total_count_descend_index[i] == 2 or total_count_descend_index[i] == 3:
+                ref_alt_index = total_count_descend_index[i]
+                break
+        ref_alt = Base_dict[ref_alt_index]
+    else:
+        for i in range(4):
+            if total_count_descend_index[i] == 0 or total_count_descend_index[i] == 1:
+                ref_alt_index = total_count_descend_index[i]
+                break
+        ref_alt = Base_dict[ref_alt_index]
+    return ref_alt
