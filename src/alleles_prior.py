@@ -45,6 +45,6 @@ def get_prior_matrix(p):
         ('CT', 'A'): p, ('CT', 'G'): p,
         ('CT', 'T'): (1 - 2 * p) / 2, ('CT', 'C'): (1 - 2 * p) / 2,
         ('GT', 'C'): p, ('GT', 'A'): p,
-        ('GT', 'T'): (1 - 2 * p) / 2, ('GT', 'G'): (1 - 2 * p) / 2
+        ('GT', 'T'): (1 - 2 * p) / 2, ('GT', 'G'): (1 - 2 * p) / 2,
     }
     return prior_matrix

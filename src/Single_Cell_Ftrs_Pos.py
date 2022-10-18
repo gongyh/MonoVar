@@ -47,8 +47,8 @@ class Single_Cell_Ftrs_Pos:
             self.base_q = current_pos_info_list[2]
             self.forward_ref_count, self.reverse_ref_count, self.refDepth = \
                 U.get_ref_count(self.primary_bases)
-
-
+           
+            
     def __str__(self):
         try:
             out_str = 'refBase={},depth={},refDepth={}\n' \
@@ -72,10 +72,10 @@ class Single_Cell_Ftrs_Pos:
         else:
             cp_primary_bases = self.primary_bases
             self.ins_list, ins_rmvd_bases = \
-                U.find_indel(cp_primary_bases, '\+[0-9]+[ACGTNacgtnRYMKSWHBVDrymkswhbvd]+')
+                U.find_indel(cp_primary_bases, '\+[0-9]+[ACGTNRYMKSWBVDHZacgtnrymkswbvdhz]+')
             self.ins_count = len(self.ins_list)
             self.del_list, self.ins_del_rmvd_bases = \
-                U.find_indel(ins_rmvd_bases, '-[0-9]+[ACGTNacgtnRYMKSWHBVDrymkswhbvd]+')
+                U.find_indel(ins_rmvd_bases, '-[0-9]+[ACGTNRYMKSWBVDHZacgtnrymkswbvdhz]+')
             self.del_count = len(self.del_list)
 
 
@@ -83,7 +83,7 @@ class Single_Cell_Ftrs_Pos:
     def get_base_qual_vals(self):
         self.base_qual_val_list, self.base_qual_int_val_list = \
             U.get_base_qual_list(self.base_q)
-
+  
 
     # After removal of insertions and deletions we create the base call string
     # to be used by the model
@@ -94,10 +94,10 @@ class Single_Cell_Ftrs_Pos:
             U.get_base_call_string(self.start_end_ins_del_rmvd_bases, ref)
 
 
-    def get_base_call_string_nd_quals(self, ref):
+    def get_base_call_string_nd_quals(self):
         self.get_ins_del_rmvd_bases()
         self.get_base_qual_vals()
-        self.get_base_calls(ref)
+        self.get_base_calls(self.refBase)
 
 
     # Function that calculates the numbers of alternate alleles in the
@@ -114,8 +114,53 @@ class Single_Cell_Ftrs_Pos:
         return np.array([A_cnt, T_cnt, G_cnt, C_cnt], dtype=int)
 
 
+    def get_deg_alt_allele_count(self, original_refBase):
+        if original_refBase == 'R':
+            A_cnt = 0
+            T_cnt = self.start_end_ins_del_rmvd_bases.count('T') \
+              + self.start_end_ins_del_rmvd_bases.count('t')
+            G_cnt = 0
+            C_cnt = self.start_end_ins_del_rmvd_bases.count('C') \
+              + self.start_end_ins_del_rmvd_bases.count('c')
+        elif original_refBase == 'Y':
+            A_cnt = self.start_end_ins_del_rmvd_bases.count('A') \
+                + self.start_end_ins_del_rmvd_bases.count('a')
+            T_cnt = 0
+            G_cnt = self.start_end_ins_del_rmvd_bases.count('G') \
+                + self.start_end_ins_del_rmvd_bases.count('g')
+            C_cnt = 0
+        elif original_refBase == 'M':
+            A_cnt = 0
+            T_cnt = self.start_end_ins_del_rmvd_bases.count('T') \
+                + self.start_end_ins_del_rmvd_bases.count('t')
+            G_cnt = self.start_end_ins_del_rmvd_bases.count('G') \
+                + self.start_end_ins_del_rmvd_bases.count('g')
+            C_cnt = 0
+        elif original_refBase == 'K':
+            A_cnt = self.start_end_ins_del_rmvd_bases.count('A') \
+                + self.start_end_ins_del_rmvd_bases.count('a')
+            T_cnt = 0
+            G_cnt = 0
+            C_cnt = self.start_end_ins_del_rmvd_bases.count('C') \
+                + self.start_end_ins_del_rmvd_bases.count('c')
+        elif original_refBase == 'S':
+            A_cnt = self.start_end_ins_del_rmvd_bases.count('A') \
+                + self.start_end_ins_del_rmvd_bases.count('a')
+            T_cnt = self.start_end_ins_del_rmvd_bases.count('T') \
+                + self.start_end_ins_del_rmvd_bases.count('t')
+            G_cnt = 0
+            C_cnt = 0
+        else:
+            A_cnt = 0
+            T_cnt = 0
+            G_cnt = self.start_end_ins_del_rmvd_bases.count('G') \
+                + self.start_end_ins_del_rmvd_bases.count('g')
+            C_cnt = self.start_end_ins_del_rmvd_bases.count('C') \
+                + self.start_end_ins_del_rmvd_bases.count('c')
+        return np.array([A_cnt, T_cnt, G_cnt, C_cnt], dtype=int)
+
     # Store altBase, Alt_freq, prior_allele_mat
-    def store_addl_info(self, refBase, altBase, Alt_freq, prior_allele_mat):
+    def store_addl_info(self, altBase, Alt_freq, prior_allele_mat):
         self.altBase = altBase
         self.Alt_freq = Alt_freq
         self.forward_alt_count = self.start_end_ins_del_rmvd_bases \
@@ -125,7 +170,6 @@ class Single_Cell_Ftrs_Pos:
         self.alt_count = self.forward_alt_count + self.reverse_alt_count
 
         self.prior_allele_mat = prior_allele_mat
-        self.refBase = refBase
 
 
     def get_strand_bias_info(self):
