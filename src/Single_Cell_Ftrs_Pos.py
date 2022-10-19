@@ -46,8 +46,8 @@ class Single_Cell_Ftrs_Pos:
             self.primary_bases = current_pos_info_list[1]
             self.base_q = current_pos_info_list[2]
             self.forward_ref_count, self.reverse_ref_count, self.refDepth = \
-                U.get_ref_count(self.primary_bases)
-           
+                U.get_ref_count(self.primary_bases, self.refBase)
+            
             
     def __str__(self):
         try:

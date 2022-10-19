@@ -36,7 +36,7 @@ import pysam
 from scipy import stats
 from base_q_ascii import base_q_dict, base_q_int_dict
 from alleles_prior import get_prior_matrix
-import random
+
 
 Base_dict = {0: 'A', 1: 'T', 2: 'G', 3: 'C'}
 
@@ -51,10 +51,11 @@ def get_nCr_mat(max_allele_cnt):
     return ncr_mat
 
 
-def get_ref_count(read_base):
+def get_ref_count(read_base, ref):
     forward_ref_c = read_base.count('.')
     reverse_ref_c = read_base.count(',')
-    ref_count = forward_ref_c + reverse_ref_c
+    degenerate_ref = read_base.count(ref.upper()) + read_base.count(ref.lower())
+    ref_count = forward_ref_c + reverse_ref_c + degenerate_ref
     return forward_ref_c, reverse_ref_c, ref_count
 
 
