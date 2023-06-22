@@ -36,13 +36,14 @@ import pysam
 from scipy import stats
 from base_q_ascii import base_q_dict, base_q_int_dict
 from alleles_prior import get_prior_matrix
-
+import random
 
 Base_dict = {0: 'A', 1: 'T', 2: 'G', 3: 'C'}
 
+
 def get_nCr_mat(max_allele_cnt):
     factorial_list = [np.math.factorial(i) for i in range(max_allele_cnt)]
-       
+
     ncr_mat = np.zeros((max_allele_cnt, max_allele_cnt))
     for i in range(max_allele_cnt):
         for j in range(max_allele_cnt):
@@ -54,8 +55,30 @@ def get_nCr_mat(max_allele_cnt):
 def get_ref_count(read_base, ref):
     forward_ref_c = read_base.count('.')
     reverse_ref_c = read_base.count(',')
-    degenerate_ref = read_base.count(ref.upper()) + read_base.count(ref.lower())
-    ref_count = forward_ref_c + reverse_ref_c + degenerate_ref
+    ref_count = forward_ref_c + reverse_ref_c
+    return forward_ref_c, reverse_ref_c, ref_count
+
+
+def get_deg_ref_count(read_base, ref):
+    if ref == 'R':
+        forward_ref_c = read_base.count('A') + read_base.count('G')
+        reverse_ref_c = read_base.count('a') + read_base.count('g')
+    elif ref == 'Y':
+        forward_ref_c = read_base.count('C') + read_base.count('T')
+        reverse_ref_c = read_base.count('c') + read_base.count('t')
+    elif ref == 'M':
+        forward_ref_c = read_base.count('A') + read_base.count('C')
+        reverse_ref_c = read_base.count('a') + read_base.count('c')
+    elif ref == 'K':
+        forward_ref_c = read_base.count('G') + read_base.count('T')
+        reverse_ref_c = read_base.count('g') + read_base.count('t')
+    elif ref == 'S':
+        forward_ref_c = read_base.count('G') + read_base.count('C')
+        reverse_ref_c = read_base.count('g') + read_base.count('c')
+    else:
+        forward_ref_c = read_base.count('A') + read_base.count('T')
+        reverse_ref_c = read_base.count('a') + read_base.count('t')
+    ref_count = forward_ref_c + reverse_ref_c
     return forward_ref_c, reverse_ref_c, ref_count
 
 
@@ -72,7 +95,8 @@ def find_indel(string, pattern):
     and the new string with patterns removed
     """
     l = [x.group() for x in re.finditer(pattern, string)]
-    len_indel = [int(re.split(r'(\d+)', i)[1]) for i in l]  # Get the lengths of the patterns
+    len_indel = [int(re.split(r'(\d+)', i)[1])
+                 for i in l]  # Get the lengths of the patterns
     spans = [i.span() for i in re.finditer(pattern, string)]  # Get the spans
     newspan = []  # Change the spans according to the integer length of the pattern
     for i in range(len(len_indel)):
@@ -122,7 +146,7 @@ def get_base_call_string(s, ref):
         finally returns a string that contains all the observed bases
     """
     l = {'.': ref, ',': ref, '*': ref, 'a': 'A', 'A': 'A', 'c': 'C', 'C': 'C',
-        't': 'T', 'T': 'T', 'g': 'G', 'G': 'G'}
+         't': 'T', 'T': 'T', 'g': 'G', 'G': 'G'}
     sn = ''
     for i in s:
         try:
@@ -210,7 +234,7 @@ def find_max_prob_ratio(matrix):
 
     allele_count = matrix.denom_prob_matrix[:, -1].argmax()
     max_prob = matrix.denom_prob_matrix[allele_count, -1]
-       
+
     if max_prob <= 0:
         log_max_prob = -743.7469
     else:
@@ -220,11 +244,11 @@ def find_max_prob_ratio(matrix):
 
 
 def get_prior_allele_mat(read_smpl_count, alt_smpl_count,
-            cell_no_threshold, total_depth, Alt_freq, pe):
+                         cell_no_threshold, total_depth, Alt_freq, pe):
     if read_smpl_count > cell_no_threshold - 1 and alt_smpl_count == 1:
         prior_mat = get_prior_matrix(0.2)
     elif read_smpl_count > cell_no_threshold and alt_smpl_count == 2 \
-                and total_depth > 30 and Alt_freq < 0.1:
+            and total_depth > 30 and Alt_freq < 0.1:
         prior_mat = get_prior_matrix(0.1)
     else:
         prior_mat = get_prior_matrix(pe)
@@ -253,7 +277,7 @@ def calc_base_q_rank_sum(read_supported_cell_list):
                 ref_list.append(cell_ftr_info.base_qual_int_val_list[i])
             elif base == cell_ftr_info.altBase:
                 alt_list.append(cell_ftr_info.base_qual_int_val_list[i])
-    
+
     baseQranksum, pVal = stats.ranksums(alt_list, ref_list)
     return baseQranksum
 
@@ -284,7 +308,7 @@ def get_BAM_RG(bam_file):
 
 
 def calc_per_smpl_alt_ref_ratio(total_ref_depth, alt_count,
-            read_smpl_count, alt_smpl_count):
+                                read_smpl_count, alt_smpl_count):
     if total_ref_depth == 0:
         denom = 1
     else:
@@ -312,9 +336,11 @@ def ins_del_rmvd_original_bases(original_bases):
         del_list = []
         cp_original_bases = original_bases
         ins_list, ins_rmvd_bases = \
-            find_indel(cp_original_bases, '\+[0-9]+[ACGTNRYMKSWBVDHZacgtnrymkswbvdhz]+')
+            find_indel(cp_original_bases,
+                       '\+[0-9]+[ACGTNRYMKSWBVDHZacgtnrymkswbvdhz]+')
         del_list, ins_del_rmvd_bases = \
-            find_indel(ins_rmvd_bases, '-[0-9]+[ACGTNRYMKSWBVDHZacgtnrymkswbvdhz]+')
+            find_indel(ins_rmvd_bases,
+                       '-[0-9]+[ACGTNRYMKSWBVDHZacgtnrymkswbvdhz]+')
     return ins_del_rmvd_bases
 
 

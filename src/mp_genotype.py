@@ -74,7 +74,7 @@ def get_info_string(read_supported_cell_list, n_cells, nCr_matrix,
     else:
         g_ind = p_list.argmax()
         norm_p_list = p_list / p_list.sum()
-   
+
     # Determining PL
     PL = np.round(-10 * np.log10(norm_p_list))
     PL = np.where(np.isinf(PL), PHRED_POOR_QUAL, PL)
